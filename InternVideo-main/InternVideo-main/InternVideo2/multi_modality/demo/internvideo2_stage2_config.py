@@ -50,10 +50,10 @@ model = dict(
         clip_norm_type='l2',
         clip_return_layer=6,
         clip_student_return_interval=1,
-        pretrained='../models/weights/InternVideo2-stage2_1b-224p-f4.pt',
+        pretrained='./models/weights/InternVideo2-stage2_1b-224p-f4.pt',
         use_checkpoint=True,
         checkpoint_num=40,
-        use_flash_attn=use_half_precision,
+        use_flash_attn=False,
         use_fused_rmsnorm=use_half_precision,
         use_fused_mlp=use_half_precision,
         # clip teacher

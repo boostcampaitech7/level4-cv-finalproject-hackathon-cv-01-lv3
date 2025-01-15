@@ -6,8 +6,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from .utils import allgather_wgrad
-from ..utils.distributed import get_rank, get_world_size
-from ..utils.easydict import EasyDict
+from multi_modality.utils.distributed import get_rank, get_world_size
+from multi_modality.utils.easydict import EasyDict
 
 logger = logging.getLogger(__name__)
 

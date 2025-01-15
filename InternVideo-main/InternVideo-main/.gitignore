@@ -159,3 +159,4 @@ work_dir/
 batchscript-*
 phoenix-slurm-*
 wandb
+weights/
