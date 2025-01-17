@@ -86,10 +86,11 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             loss = loss / accum_steps
 
         if do_amp:
-            from apex import amp
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
+            # from apex import amp
+            # with amp.scale_loss(loss, optimizer) as scaled_loss:
                 # logger.info('scaled loss: {}'.format(str(scaled_loss)))
-                scaled_loss.backward()
+                # scaled_loss.backward()
+            loss.backward()
         else:
             loss.backward()
         if (i + 1) % accum_steps == 0:
@@ -253,9 +254,9 @@ def main(args, config):
     arg_sche["num_iterations"] = max_epoch * train_step_per_epoch - arg_sche['warmup_epochs']
     lr_scheduler, _ = create_scheduler(arg_sche, optimizer)
 
-    if args.do_amp:
-        from apex import amp
-        model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
+    # if args.do_amp:
+    #     from apex import amp
+    #     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location='cpu')
@@ -288,11 +289,11 @@ def main(args, config):
         print(msg)
 
     model_without_ddp = model
-    if args.distributed:
-        #model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
-        import apex
-        model = apex.parallel.DistributedDataParallel(model, delay_allreduce=True)
-        model_without_ddp = model.module
+    # if args.distributed:
+    #     #model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+    #     import apex
+    #     model = apex.parallel.DistributedDataParallel(model, delay_allreduce=True)
+    #     model_without_ddp = model.module
 
     best_epoch = -1
     best_acc = 0

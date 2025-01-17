@@ -15,9 +15,9 @@ schedular: {cooldown_epochs: 0, decay_rate: 1, epochs: 10, lr: 2e-5, min_lr: 1e-
 
 # Data
 read_local_data: true
-train_file: 'datasets/annotations_all/msrvtt_caption/train.jsonl'
-test_file: 'datasets/annotations_all/msrvtt_caption/test.jsonl'
-video_root: datasets/MSRVTT/data/MSRVTT/videos/all"
+train_file: 'datasets/MSRVTT/videos/train_data.jsonl'
+test_file: 'datasets/MSRVTT/videos/test_data.jsonl'
+video_root: 'datasets/MSRVTT/videos/all'
 
 beam_size: 5
 
