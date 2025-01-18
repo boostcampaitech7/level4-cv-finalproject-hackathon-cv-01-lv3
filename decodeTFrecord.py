@@ -63,7 +63,7 @@ class YoutubeSegmentDataset(torch.utils.data.IterableDataset):
         vid_labels = list(context.feature['labels'].int64_list.value)
         vid_labels_encoded = set([self.label_mapping[x] for x in vid_labels if x in self.label_mapping])
         vid = context.feature['id'].bytes_list.value[0].decode('utf8')
-
+        
         # Frames. Shape: (frames, 1024)
         tmp = video_features.feature_list['rgb'].feature
         frames = tf.cast(tf.io.decode_raw([x.bytes_list.value[0] for x in tmp], out_type='uint8'), "float32").numpy()
@@ -130,7 +130,7 @@ class YoutubeSegmentDataset(torch.utils.data.IterableDataset):
         # Shape: (n_segments * (5 + self.offset * 2), 1152) -> (n_segments, 5 + self.offset * 2, 1152)
         # 이 코드 정확히는 이해 안됨
         segments = torch.index_select(video_features_padded, 0, indices.view(-1)).view(indices.size(0), 5 + self.offset * 2, -1)
-        return video_features, segments, torch.from_numpy(segment_labels).unsqueeze(1), np.expand_dims(segment_labels_name, axis=1), torch.from_numpy(segment_scores).unsqueeze(1)
+        return vid, video_features, segments, torch.from_numpy(segment_start_times), torch.from_numpy(segment_labels).unsqueeze(1), np.expand_dims(segment_labels_name, axis=1), torch.from_numpy(segment_scores).unsqueeze(1)
 
     def _iterate_through_dataset(self, tf_dataset):
         """
@@ -145,9 +145,9 @@ class YoutubeSegmentDataset(torch.utils.data.IterableDataset):
         else:
             for row in tf_dataset:
                 # self.prepare_one_sample(row)를 한 번 더 감싸서 튜플 형태로 만들어 Rank를 1 이상으로 만들어 주기 위함 (안하면 Value Error - Unbatching a tensor 오류뜸)
-                video_features, segments, segment_labels, segment_labels_names, segment_scores = self.prepare_one_sample(row)
-                for segment, label, n_label, score in zip(segments, segment_labels, segment_labels_names, segment_scores):
-                    yield video_features, segment, torch.cat([label, score]), n_label
+                vid, video_features, segments, segment_start_times, segment_labels, segment_labels_names, segment_scores = self.prepare_one_sample(row)
+                for segment, segment_start_time, label, n_label, score in zip(segments, segment_start_times, segment_labels, segment_labels_names, segment_scores):
+                    yield vid, video_features, segment, segment_start_time, torch.cat([label, score]), n_label
 
 
     def generator(self, seed):
@@ -167,44 +167,28 @@ class YoutubeSegmentDataset(torch.utils.data.IterableDataset):
                 break
             yield row
 
-def collate_videos(batch, pad=0):
-    """
-    Batch Preparation
-    Pads the sequences if needed
-    """
-    transposed = list(zip(*batch))
-    max_len = max(len(x) for x in transposed[0])
-    data = torch.zeros((len(batch), max_len, transposed[0][0].size(-1)), dtype=torch.float) + pad
-    masks = torch.zeros((len(batch), max_len), dtype=torch.float) # padding부분을 제외시켜주기 위함
-    for i, row in enumerate(transposed[0]):
-        data[i, :len(row)] = row
-        masks[i, :len(row)] = 1
-    # Labels
-    if transposed[1][0] is None:
-        return data, masks, None
-    labels = torch.stack(transposed[1]).float()
-    return data, masks, labels
-
 def collate_segments(batch, pad=0):
     """Batch preparation.
 
     Pads the sequences
     """
-    #  frames, segment, (label, score, negative_mask)
+    #  video_id, frames, segment, segment_start_time, (label, score), n_label
     transposed = list(zip(*batch))
-    max_len = max((len(x) for x in transposed[0]))
+    max_len = max((len(x) for x in transposed[1]))
     video_data = torch.zeros(
-        (len(batch), max_len, transposed[0][0].size(-1)),
+        (len(batch), max_len, transposed[1][0].size(-1)),
         dtype=torch.float
     ) + pad
     video_masks = torch.zeros((len(batch), max_len), dtype=torch.float)
-    for i, row in enumerate(transposed[0]):
+    for i, row in enumerate(transposed[1]):
         video_data[i, :len(row)] = row
         video_masks[i, :len(row)] = 1
-    segments = torch.stack(transposed[1]).float()
-    labels = torch.stack(transposed[2])
-    nlabels = np.array(transposed[3])
-    return video_data, video_masks, segments, labels, nlabels
+    vid = transposed[0]
+    segments = torch.stack(transposed[2]).float()
+    segment_start_times = torch.stack(transposed[3]).int()
+    labels = torch.stack(transposed[4])
+    nlabels = np.array(transposed[5])
+    return vid, video_data, video_masks, segments, segment_start_times, labels, nlabels
 
 def collate_frame(batch, pad=0):
     """
@@ -224,22 +208,23 @@ def collate_frame(batch, pad=0):
 # file_path = "./*.tfrecord"
 
 # seg 예시
-# file_path = "./validate0031.tfrecord"
-# typ = 'seg'
+file_path = "./*.tfrecord"
+typ = 'seg'
 
 # frame 예시
-file_path = "./trainpj.tfrecord"
-typ = 'frame'
+# file_path = "./trainpj.tfrecord"
+# typ = 'frame'
 dataset = YoutubeSegmentDataset(typ, file_paths=file_path)
-
 if typ == 'seg':
     print('This is the Segments rated Frame Level Dataset')
-    for i,(v,s,ls,nl) in enumerate(dataset):
+    for i,(vid, video_data, segment, segment_start_time, label, named_label) in enumerate(dataset):
         print(f"--------------{i} Data --------------")
-        print(f"video_features.shape: {v.shape}")
-        print(f"segment.shape: {s.shape}")
-        print(f"label+score.shape: {ls.shape}, segment_label: {ls}")
-        print(f"named label: {nl}")
+        print(f"video_id.shape: {vid}")
+        print(f"video_features.shape: {video_data.shape}")
+        print(f"segment.shape: {segment.shape}")
+        print(f"segment_start_time: {segment_start_time}")
+        print(f"label+score.shape: {label.shape}, segment_label: {label}")
+        print(f"named label: {named_label}")
         print("--------------------------------------")
         if i==3:
             break
@@ -262,10 +247,12 @@ if typ == 'frame':
 else:
     # Segments-Rated Frame Level Youtube-8M Dataset 예시
     loader = DataLoader(dataset, num_workers=0, batch_size=batch_size, collate_fn = collate_segments)
-    for i, (video_data, video_masks, segments, labels, nlabels) in enumerate(loader):
+    for i, (vid, video_data, video_masks, segments, segment_start_time, labels, named_labels) in enumerate(loader):
         print(f"NOW: {(i+1)*batch_size}")
+        print(f"video_id: {vid}")
         print(f"video_data.shape: {video_data.shape}")
         print(f"video_masks.shape: {video_masks.shape}")
-        print(f"segment.shape: {segments.shape}")
+        print(f"segments.shape: {segments.shape}")
+        print(f"segment_start_time: {segment_start_time}")
         print(f"labels.shape: {labels.shape}")
-        print(f"nlabels.shape: {nlabels.shape}")
+        print(f"named_labels.shape: {named_labels.shape}")
