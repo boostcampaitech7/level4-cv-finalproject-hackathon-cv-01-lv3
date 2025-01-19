@@ -21,7 +21,7 @@ class VideoCaption:
         )
 
         # 모델 초기화
-        if torch.cuda.is_available():
+        if torch.cuda  .is_available():
             self.model = InternVideo2_VideoChat2.from_pretrained(
                 model_path,
                 config=self.config,
@@ -92,7 +92,7 @@ class VideoCaption:
         # 캡션 생성
         response, _ = self.model.chat(
             tokenizer=self.tokenizer,
-            msg='',
+            msg='The video starts with a man and a dog playing in the snow. The man is kneeling down and the dog is running around him. The man is wearing a black jacket and blue jeans. The dog is a light brown color and has a black nose. The snow is falling down from the sky and covering the ground. The man and the dog are having fun playing in the snow. The man is throwing snow at the dog and the dog is running around and playing with the snow. The man is also throwing snow at the camera and the dog is running around and playing with the snow. The man and the dog are having a great time playing in the snow. The video ends with the man and the dog still playing in the snow.',
             user_prompt='Describe the video step by step',
             instruction="Carefully watch the video and describe what is happening in detail.",
             media_type='video',
@@ -108,14 +108,16 @@ class VideoCaption:
         return response
 
 def main():
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     # 모델 경로 설정
-    model_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/tasks/captioning/InternVideo2-Chat-8B"
+    model_path = os.path.join(current_dir)
     
     # VideoCaption 인스턴스 생성
     captioner = VideoCaption(model_path)
     
     # 비디오 경로 설정
-    video_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/example1.mp4"
+    video_path = os.path.join(current_dir.split("tasks/captioning/InternVideo2-Chat-8B")[0], "demo/example1.mp4")
     
     # 캡션 생성
     caption = captioner.generate_caption(video_path)

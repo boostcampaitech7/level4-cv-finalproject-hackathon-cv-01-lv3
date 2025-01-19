@@ -56,3 +56,5 @@ exp
 
 batchscript-*
 *.out
+
+.safetensors

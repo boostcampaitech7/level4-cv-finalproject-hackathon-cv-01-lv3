@@ -16,8 +16,9 @@ class BaseDataset(Dataset):
     """Base class that implements the image and video loading methods"""
 
     media_type = "video"
-
+    
     def __init__(self):
+        # media_type이 "audio", "image", "video", "audio_video" 중 하나인지 확인하는 검증문
         assert self.media_type in ["audio", "image", "video", "audio_video"]
         self.data_root = None
         self.data_root_prefix = ""

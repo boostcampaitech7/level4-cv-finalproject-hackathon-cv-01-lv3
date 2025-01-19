@@ -144,11 +144,19 @@ class BaseMLLM(PreTrainedModel):
         else:
             raise NotImplementedError(self.model_config.llm.name)
 
-        self.freeze_llm = self.model_config.get("freeze_llm", True)
+        # 01.18, deamin
+        self.freeze_llm = self.model_config.get("freeze_llm", False) # True->False
+        
         logger.info(f'freeze_llm: {self.freeze_llm}')
         if self.freeze_llm:
             logger.info("freeze llm")
             freeze_module(self.lm)
+            
+        # 01.18, deamin
+        # 학습설정 추가
+        elif not self.freeze_llm:
+            self.lm.gradient_checkpointing_enable()  # 메모리 효율을 위한 설정
+            self.lm.enable_input_require_grads()
         
         if self.model_config.llm.use_lora:
             self.use_lora = True
@@ -179,7 +187,25 @@ class BaseMLLM(PreTrainedModel):
         self.use_vision_regression_loss = self.model_config.loss.get("use_vision_regression_loss", False)
         if self.use_vision_regression_loss:
             self.image_loss_fct = MSELoss()
+    
+    # 01.18, deamin
+    def prepare_for_training(self):
+        self.train()
         
+        # 옵티마이저 설정
+        from transformers import AdamW
+        optimizer = AdamW(self.parameters(), lr=1e-5)
+        
+        # 스케줄러 설정
+        from transformers import get_linear_schedule_with_warmup
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=100,
+            num_training_steps=1000
+        )
+        
+        return optimizer, scheduler
+    
     @property
     def dtype(self):
         return self.lm.dtype

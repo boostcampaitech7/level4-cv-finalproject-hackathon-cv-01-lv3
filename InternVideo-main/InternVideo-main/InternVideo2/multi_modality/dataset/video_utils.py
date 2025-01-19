@@ -87,6 +87,68 @@ def get_frame_indices(num_frames, vlen, sample='rand', fix_start=None, input_fps
         raise ValueError
     return frame_indices
 
+# 01.18, deamin
+def read_frames_cv2(
+    video_path: str = None,
+    use_segment: bool = True,
+    start_time: int = 0,
+    end_time: int = 0,
+    s3_client: bool = False,
+    # fps: float = 1, # 현재는 동영상 fps를 기준으로 샘플링, 추후 fps를 변경할 때 추가, 
+    # sampling: str = 'static', # static, dynamic, dynamic algorithm 토의 후 추가
+):
+    '''
+    단일 segment 대해 frame을 제공하는 Dataloader(전체 video는 추가 중, 01.18, deamin)
+    Video를 받아서 프레임을 tensor로 반환한다.
+    
+    Args: 
+        video_path: str, 동영상 경로
+        use_segment: bool, 단일 segment 사용 여부
+        start_time: int, 시작 시간
+        end_time: int, 종료 시간
+        s3_client: bool, s3 클라이언트 사용 여부
+    
+    Returns:
+        frames: torch.Tensor, 동영상 프레임 텐서, (T, C, H, W), torch.uint8
+    '''
+    
+    # 동영상 읽기 실패 시 예외 처리 포함, s3와 local 경로 제공
+    try:
+        if not s3_client:
+            video = cv2.VideoCapture(video_path)
+            video_fps: float = video.get(cv2.CAP_PROP_FPS)
+        else:
+            video = cv2.VideoCapture(io.BytesIO(s3_client.get(video_path)))
+            video_fps: float = video.get(cv2.CAP_PROP_FPS)
+    except Exception as e:
+        raise Exception(f"Failed to read video, error: {e}")
+    
+    # 단일 segment -> else (01.18, deamin)
+    if not use_segment:
+        frame_indices: list[int, int] = [start_time * video_fps, end_time * video_fps] # [start_time, end_time]
+    else:
+        duration: float = video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps
+        frame_indices: list[int, int] = [0, duration]
+    
+    frames = []
+    if not video.isOpened():
+        raise Exception(f"Failed to open video: {video_path}")
+    
+    # segment에 해당하는 frame만 추가
+    while video.isOpened():
+        for idx in frame_indices:    
+            video.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = video.read()
+            if not ret:
+                raise Exception(f"Failed to read frame: {idx}")
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frames.append(frame)
+    video.release()
+    
+    # (T, H, W, C) to (T, C, H, W), numpy to tensor, dtype=torch.uint8
+    frames = torch.from_numpy(np.stack(frames), dtype=torch.uint8).permute(0, 3, 1, 2)
+    return frames, frame_indices, duration
+
 
 def read_frames_av(video_path, num_frames, sample='rand', fix_start=None, max_num_frames=-1):
     reader = av.open(video_path)
@@ -206,4 +268,6 @@ VIDEO_READER_FUNCS = {
     'decord': read_frames_decord,
     'gif': read_frames_gif,
     'img': read_frames_img,
+    # 01.18, deamin
+    'cv2': read_frames_cv2,
 }

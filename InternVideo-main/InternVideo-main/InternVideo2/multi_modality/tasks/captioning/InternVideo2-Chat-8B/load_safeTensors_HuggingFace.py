@@ -49,6 +49,7 @@ def main():
         "tokenizer.model",
         "tokenizer.model.v3",
         "tokenizer_config.json",
+        "config.json",
         ]
 
     # 현재 파일의 디렉토리 경로를 가져옵니다
