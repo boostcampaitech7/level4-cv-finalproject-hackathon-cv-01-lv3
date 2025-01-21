@@ -4,6 +4,12 @@ import torch
 import io
 import pandas as pd
 import os
+from torchvision import transforms
+import albumentations as A
+
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from av_utils import load_full_audio_av
 
 # 01.18, deamin
 def read_frames_cv2(
@@ -41,37 +47,43 @@ def read_frames_cv2(
     except Exception as e:
         raise Exception(f"Failed to read video, error: {e}")
     
+    frames = []
+    if not video.isOpened() or video.get(cv2.CAP_PROP_FRAME_COUNT) == 0:
+        raise Exception(f"Failed to open video: {video_path}")
+    else:
+        print(f"Successfully opened video: {video_path}")
+    
     # 단일 segment -> else (01.18, deamin)
     if not use_segment:
         frame_indices: list[int, int] = [start_time * video_fps, end_time * video_fps] # [start_time, end_time]
     else:
-        duration: float = video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps
-        frame_indices: list[int, int] = [0, duration]
+        # 전체 frame 사용
+        frame_indices: list[int, int] = [0, int(video.get(cv2.CAP_PROP_FRAME_COUNT))]
+
+    video.set(cv2.CAP_PROP_POS_FRAMES, frame_indices[0])
+    print(f"frame_indices: {frame_indices}")
     
-    frames = []
-    if not video.isOpened():
-        raise Exception(f"Failed to open video: {video_path}")
-    else:
-        print(f"Successfully opened video: {video_path}")
-        video.set(cv2.CAP_PROP_POS_FRAMES, frame_indices[0])
+    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = video.get(cv2.CAP_PROP_FPS)
     
+    print(f"total_frames: {total_frames}, fps: {fps}")
+
     # segment에 해당하는 frame만 추가
-    while video.isOpened():    
-        for idx in range(frame_indices[0], frame_indices[1]):    
-            ret, frame = video.read()
-            if not ret:
-                raise Exception(f"Failed to read frame: {idx}")
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames.append(frame)
+    for idx in range(frame_indices[0], frame_indices[1]):    
+        ret, frame = video.read()
+        if not ret:
+            raise Exception(f"Failed to read frame: {idx}")
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frames.append(frame)
+        # print(f"success processing frame idx: {idx} frames")
     video.release()
     
     # (T, H, W, C) to (T, C, H, W), numpy to tensor, dtype=torch.uint8
-    frames = torch.from_numpy(np.stack(frames), dtype=torch.uint8).permute(0, 3, 1, 2)
-    return frames, frame_indices, duration
+    frames = torch.tensor(np.stack(frames), dtype=torch.uint8).permute(0, 3, 1, 2)
+    return frames, frame_indices, int(total_frames/fps)
 
 # 01.18, deamin
 from torch.utils.data import Dataset
-from av_utils import lazy_load_audio, load_full_audio_av
 from torchvision import transforms
 import albumentations as A
 
@@ -106,7 +118,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             csv_path: str = None,
             video_root: str = None,
             use_segment: bool = True,
-            # start_time: int = 0, 현재는 segment 단위 입력이므로 주석처리
+            # start_time: int = 0, 현재는 segment_name을 파싱하여 대체 중
             # end_time: int = 0,
             s3_client: bool = False,
             use_audio: bool = False,
@@ -132,23 +144,30 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
     def __len__(self):
         # 총 sample 수(segment 수) 반환, train/test 여부에 따라 다르게 반환
         if self.train:
-            return len(self.segments_df.iloc['TRAIN/TEST']['train'])
+            return len(self.segments_df[self.segments_df['TRAIN/TEST'] == 'train'])
         else:
-            return len(self.segments_df.iloc['TRAIN/TEST']['test'])
+            return len(self.segments_df[self.segments_df['TRAIN/TEST'] == 'test'])
     
     def __getitem__(self, index):
         if self.train:
-            segment_df = self.segments_df.iloc['TRAIN/TEST']['train']
+            segment_df = self.segments_df[self.segments_df['TRAIN/TEST'] == 'train']
         else:
-            segment_df = self.segments_df.iloc['TRAIN/TEST']['test']
+            segment_df = self.segments_df[self.segments_df['TRAIN/TEST'] == 'test']
         # segment 예시: "'ViDEOPATH'_'STARTTIME(HH_MM_SS)'_'ENDTIME(HH_MM_SS)'"
         segment_name = segment_df.iloc[index]['SEGMENT_NAME']
+        print(f"segment_name: {segment_name}")
         parts = segment_name.split('_')
-        end_time = '_'.join(parts[-1:-4:-1])
-        start_time = '_'.join(parts[-4:-7:-1])
-        video_name = '_'.join(parts[0:-7])
+        print(f"parts: {parts}")
+        video_name = parts[0]
+        print(f"video_name: {video_name}")
+        start_time = '_'.join(parts[1:4])
+        print(f"start_time: {start_time}")
+        end_time = '_'.join(parts[4:7])
+        print(f"end_time: {end_time}")
+
+        
         annotation = segment_df.iloc[index]['ANNO']
-            
+        print(f"annotation: {annotation}")
         video_path = os.path.join(self.video_root, video_name)
         assert video_path is not None and isinstance(video_path, str), "video_path must be a string, or not None"
         assert annotation is not None and isinstance(annotation, str), "annotation must be a string, or not None"
@@ -176,7 +195,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             'frames': self.preprocess_frames(frames),
             'audio': audio,
             'frame_indices': frame_indices,
-            'segment_name': video_name + '_' + start_time + '_' + end_time,
+            'segment_name': video_name + '_' + str(start_time) + '_' + str(end_time),
             'duration': duration,
             'video_path': video_path,
             'annotation': annotation
@@ -198,30 +217,22 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
                     std=[0.229, 0.224, 0.225]
                 )
             ])
+
         try:
-            # (T, C, H, W) 형태로, 각 프레임에 대한 전처리 진행
-            processed_frames = []
-            for frame in frames:
-                frame = self.transform(frame[:3])  # 각 프레임에 대해 resize 적용
-                processed_frames.append(frame)
+            # frames를 float32로 변환하고 정규화 (0-1 범위)
+            frames = frames.float() / 255.0
             
-            # albumentations 사용 시 전처리 추가 가능
-            if use_albumentations:
-                processed_frames = A.Compose([
-                    A.RandomResizedCrop(224, 224),
-                    A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                    A.ToTensor()
-                ])(image=processed_frames)['image']
-                
-                # OnnOf로 여러 전처리 추가 가능
-                # prob = 0.5
-                # frames = A.OneOf([
-                #     A.RandomResizedCrop(224, 224),
-                #     A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
-                #     A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2),
-                #     A.GaussianBlur(blur_limit=3),
-                # ], p=prob)(image=frames)['image']    
-            return processed_frames
+            # (T, C, H, W) 형태로, 각 프레임에 대한 전처리 진행
+            # 전체 프레임에 대해 한 번에 resize 적용
+            T, C, H, W = frames.shape
+            frames = frames.contiguous().view(-1, C, H, W)  # (T * C, H, W)
+            print(f"frames shape: {frames.shape}")
+            frames = self.transform(frames)
+            frames = frames.view(T, C, 224, 224)  # (T, C, 224, 224)
+  
+            print(f"Input frames shape: {frames.shape}")
+            print(f"Input frames dtype: {frames.dtype}")
+            return frames
         
         except Exception as e:
             raise RuntimeError(f"Error processing frames: {str(e)}")
@@ -241,11 +252,10 @@ class InternVideo2_VideoChat2_DataLoader(DataLoader):
         self,
         dataset: InternVideo2_VideoChat2_Dataset,
         batch_size: int = 2,
-        shuffle: bool = False,
+        shuffle: bool = True,
         num_workers: int = 4,
         pin_memory: bool = True,
         use_audio: bool = False,
-        train: bool = True,
     ):
         """
         비디오 데이터 로더 초기화
@@ -256,13 +266,11 @@ class InternVideo2_VideoChat2_DataLoader(DataLoader):
             num_workers: 데이터 로딩에 사용할 워커 수, 기본 4
             pin_memory: GPU 메모리 고정 여부, 기본 True
             use_audio: 오디오 사용 여부, 기본 False
-            train: 학습 여부, 기본 True
         Returns:
             dataloader: torch.utils.data.DataLoader, 데이터로더 인스턴스
         """
         self.use_audio = use_audio
-        self.dataset = dataset(train=train)
-        self.train = train
+        self.dataset = dataset
         self.batch_size = batch_size
         
         # 오디오 포함 여부에 따른 collate_fn,
