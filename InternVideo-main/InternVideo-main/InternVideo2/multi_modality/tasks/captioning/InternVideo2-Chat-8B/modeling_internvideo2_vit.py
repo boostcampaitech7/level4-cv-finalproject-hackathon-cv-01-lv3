@@ -39,10 +39,26 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------
 def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size, cls_token=False):
     """
-    grid_size: int of the grid height and width
-    t_size: int of the temporal size
-    return:
-    pos_embed: [t_size*grid_size*grid_size, embed_dim] or [1+t_size*grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    Get 3D sine-cosine position embedding
+    
+    using 3D sine-cosine position embedding, for to embed the spatial and temporal position information.
+    spatial dimension (H,W) and temporal dimension (T) are created differently, and then combined.
+    
+    spatial embedding takes up 3/4 of the total embedding dimension, and temporal embedding takes up 1/4.
+    finally, return the position embedding of size [T*H*W, embed_dim] or [1+T*H*W, embed_dim] (w/ or w/o cls_token)
+    
+    Summary: 
+    - 공간 차원(H,W)과 시간 차원(T)에 대해 각각 다른 크기의 임베딩을 생성하고 이를 결합합니다. 3개의 차원을 고려하여 임베딩을 생성합니다.
+    - 공간 임베딩은 전체 임베딩 차원의 3/4를 차지하고, 시간 임베딩은 1/4를 차지합니다.
+    - 최종적으로 [T*H*W, embed_dim] 또는 [1+T*H*W, embed_dim] (cls_token 포함 여부에 따라) 크기의 위치 임베딩을 반환합니다.
+    
+    Args:
+        embed_dim: int of the embedding dimension
+        grid_size: int of the grid height and width
+        t_size: int of the temporal size
+
+    Returns:
+        pos_embed: [t_size*grid_size*grid_size, embed_dim] or [1+t_size*grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
     assert embed_dim % 4 == 0
     embed_dim_spatial = embed_dim // 4 * 3
@@ -93,9 +109,22 @@ def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size, cls_token=False):
 # --------------------------------------------------------
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
     """
-    grid_size: int of the grid height and width
-    return:
-    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    get 2D sine-cosine position embedding
+
+    using 2D sine-cosine position embedding, for to embed the spatial position information.
+    only spatial dimension (H,W) is considered. not consider temporal dimension (T)
+    
+    Summary:
+    - 2D 그리드(H,W)에 대해 임베딩을 생성하고 이를 결합합니다.
+    - 최종적으로 [H*W, embed_dim] 또는 [1+H*W, embed_dim] (cls_token 포함 여부에 따라) 크기의 위치 임베딩을 반환합니다.
+    
+    Args:
+        embed_dim: int of the embedding dimension
+        grid_size: int of the grid height and width
+        cls_token: bool, whether to include cls_token
+
+    Returns:
+        pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
     grid_h = np.arange(grid_size, dtype=np.float32)
     grid_w = np.arange(grid_size, dtype=np.float32)
@@ -113,10 +142,25 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
 
 def get_1d_sincos_pos_embed(embed_dim, t_size, cls_token=False):
     """
-    t_size: int of the temporal size
-    return:
-    pos_embed: [t_size, embed_dim] or [1+t_size, embed_dim] (w/ or w/o cls_token)
+    get 1D sine-cosine position embedding
+
+    using 1D sine-cosine position embedding, for to embed the temporal position information.
+    only temporal dimension (T) is considered. not consider spatial dimension (H,W)
+    
+    Summary:
+    - 1D sine-cosine position embedding을 사용하여 시간적 위치 정보를 임베딩합니다.
+    - 1D 그리드(T)에 대해 임베딩을 생성하고 이를 결합합니다.
+    - 최종적으로 [T, embed_dim] 또는 [1+T, embed_dim] (cls_token 포함 여부에 따라) 크기의 위치 임베딩을 반환합니다.
+    
+    Args:
+        embed_dim: int of the embedding dimension
+        t_size: int of the temporal size
+        cls_token: bool, whether to include cls_token
+
+    Returns:
+        pos_embed: [t_size, embed_dim] or [1+t_size, embed_dim] (w/ or w/o cls_token)
     """
+    
     grid_t = np.arange(t_size, dtype=np.float32)
     pos_embed = get_1d_sincos_pos_embed_from_grid(embed_dim, grid_t)
     if cls_token:
@@ -143,10 +187,25 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
-    embed_dim: output dimension for each position
-    pos: a list of positions to be encoded: size (M,)
-    out: (M, D)
+    get 1D sine-cosine position embedding
+
+    using 1D sine-cosine position embedding, for to embed the temporal position information.
+    only temporal dimension (T) is considered. not consider spatial dimension (H,W)
+    
+    Summary:
+    - 1D sine-cosine position embedding을 사용하여 시간적 위치 정보를 임베딩합니다.
+    - 1D 그리드(T)에 대해 임베딩을 생성하고 이를 결합합니다.
+    - 최종적으로 [T, embed_dim] 또는 [1+T, embed_dim] (cls_token 포함 여부에 따라) 크기의 위치 임베딩을 반환합니다.
+    
+    Args:
+        embed_dim: int of the embedding dimension
+        pos: a list of positions to be encoded: size (M,)
+        out: (M, D)
+    Returns:
+        emb: (M, D)
+    
     """
+
     assert embed_dim % 2 == 0
     omega = np.arange(embed_dim // 2, dtype=np.float32)
     omega /= embed_dim / 2.0
@@ -163,6 +222,24 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 def interpolate_pos_embed_internvideo2(checkpoint_model, model, orig_t_size = 8):
+    """
+    InternVideo2의 pos_embed와 clip_pos_embed에 대한 위치 임베딩 보간
+    
+    Summary:
+    - pos_embed와 clip_pos_embed 두 가지 고정된 임베딩만 처리
+    - 시간 차원은 선형 보간, 공간 차원은 bicubic 보간 사용
+    - 클래스 토큰과 거리 토큰은 보존
+
+    Args:
+        checkpoint_model (dict): 보간할 체크포인트 모델의 상태 사전
+        model (PretrainVisionTransformer_clean): 보간 대상이 되는 현재 모델
+        orig_t_size (int): 원본 시간 차원 크기 (기본값: 8)
+
+    Returns:
+        dict: 보간된 위치 임베딩이 포함된 체크포인트 모델의 상태 사전
+            
+    """
+
     # interpolate position embedding
     for pos_name in ['pos_embed', 'clip_pos_embed']:
         if pos_name in checkpoint_model:
@@ -217,6 +294,23 @@ def interpolate_pos_embed_internvideo2(checkpoint_model, model, orig_t_size = 8)
         raise NotImplementedError
 
 def interpolate_pos_embed_internvideo2_new(checkpoint_model, model, orig_t_size = 8):
+    """
+    InternVideo2의 모든 위치 임베딩에 대한 동적 보간 (img_pos_embed 제외)
+
+    Summary:
+    - checkpoint_model에서 동적으로 위치 임베딩을 찾아 처리
+    - img_pos_embed는 처리하지 않음
+    - 시간 차원은 선형 보간, 공간 차원은 bicubic 보간 사용
+    - 클래스 토큰과 거리 토큰은 보존
+
+    Args:
+        checkpoint_model (dict): 보간할 체크포인트 모델의 상태 사전
+        model (PretrainVisionTransformer_clean): 보간 대상이 되는 현재 모델
+        orig_t_size (int): 원본 시간 차원 크기 (기본값: 8)
+
+    Returns:
+        dict: 보간된 위치 임베딩이 포함된 체크포인트 모델의 상태 사전
+    """
     pos_names = []
     for k in checkpoint_model.keys():
         if ('pos_embed' in k or 'clip_pos_embed' in k) and 'img_pos_embed' not in k: # NOTE 暂时不插值img_pos，高分辨率时可能需要再加
@@ -281,6 +375,23 @@ def interpolate_pos_embed_internvideo2_new(checkpoint_model, model, orig_t_size 
     
 
 def interpolate_pos_embed(checkpoint_model, model, orig_t_size=4, pos_name='vision_encoder.pos_embed'):
+    """
+    단일 위치 임베딩에 대한 보간 (기본값: vision_encoder.pos_embed)
+
+    Summary:
+    - 지정된 단일 위치 임베딩만 처리
+    - model.T를 사용하여 새로운 시간 차원 계산
+    - 시간 차원은 선형 보간, 공간 차원은 bicubic 보간 사용
+    - 클래스 토큰과 거리 토큰은 보존
+    
+    Args:
+        checkpoint_model (dict): 보간할 체크포인트 모델의 상태 사전
+        model (PretrainVisionTransformer_clean): 보간 대상이 되는 현재 모델
+        orig_t_size (int): 원본 시간 차원 크기 (기본값: 8)
+
+    Returns:
+        dict: 보간된 위치 임베딩이 포함된 체크포인트 모델의 상태 사전
+    """
     if pos_name in checkpoint_model:
         pos_embed_checkpoint = checkpoint_model[pos_name]
         embedding_size = pos_embed_checkpoint.shape[-1] # channel dim
@@ -332,6 +443,25 @@ def interpolate_pos_embed(checkpoint_model, model, orig_t_size=4, pos_name='visi
 
 
 class CrossAttention(nn.Module):
+    """
+    크로스 어텐션(Cross-Attention) 모듈입니다.
+
+    이 모듈은 쿼리(query), 키(key), 밸류(value)를 사용하여 멀티헤드 크로스 어텐션을 수행합니다.
+    쿼리는 입력 시퀀스에서 생성되고, 키와 밸류는 외부에서 제공됩니다.
+
+    Args:
+        dim (int): 입력 특징의 차원
+        num_heads (int): 어텐션 헤드의 수. 기본값은 8
+        qkv_bias (bool): QKV 선형 변환에 bias를 사용할지 여부. 기본값은 False
+        qk_scale (float): 어텐션 스코어의 스케일링 팩터. 기본값은 None
+        attn_drop (float): 어텐션 드롭아웃 비율. 기본값은 0.0
+        proj_drop (float): 출력 프로젝션의 드롭아웃 비율. 기본값은 0.0
+        attn_head_dim (int): 각 어텐션 헤드의 차원. 기본값은 None
+        out_dim (int): 출력 차원. 기본값은 입력 차원과 동일
+
+    Returns:
+        torch.Tensor: 크로스 어텐션 결과
+    """
     def __init__(
             self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
             proj_drop=0., attn_head_dim=None, out_dim=None):
@@ -397,6 +527,26 @@ class CrossAttention(nn.Module):
 
 
 class AttentiveBlock(nn.Module):
+    """
+    교차 어텐션(Cross-Attention)을 수행하는 어텐티브 블록입니다.
+    
+    입력 특징들에 대해 쿼리(Q), 키(K), 값(V)을 각각 정규화하고 교차 어텐션을 적용합니다.
+    
+    Args:
+        dim (int): 입력 특징의 차원
+        num_heads (int): 어텐션 헤드의 수
+        qkv_bias (bool): QKV 선형 변환에 bias를 사용할지 여부
+        qk_scale (float): QK 스케일링 팩터
+        drop (float): Dropout 비율
+        attn_drop (float): 어텐션 Dropout 비율  
+        drop_path (float): Drop path 비율
+        norm_layer: 정규화 레이어
+        attn_head_dim: 어텐션 헤드의 차원
+        out_dim: 출력 차원
+
+    Returns:
+        torch.Tensor: 크로스 어텐션 결과
+    """
     
     def __init__(self, dim, num_heads, qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, attn_head_dim=None, out_dim=None):
@@ -421,6 +571,29 @@ class AttentiveBlock(nn.Module):
 
 
 class AttentionPoolingBlock(AttentiveBlock):
+    """
+    어텐션 풀링을 수행하는 블록입니다.
+    
+    입력 특징에 대해 평균 풀링을 통해 쿼리를 생성하고, 
+    입력 특징을 키와 값으로 사용하여 크로스 어텐션을 수행합니다.
+    
+    AttentiveBlock을 상속받아 구현되었으며, forward 과정에서 입력 특징의 평균을 쿼리로 사용합니다.
+    
+    Args:
+        dim (int): 입력 특징의 차원
+        num_heads (int): 어텐션 헤드의 수 
+        qkv_bias (bool): QKV 선형 변환에 bias를 사용할지 여부
+        qk_scale (float): QK 스케일링 팩터
+        drop (float): Dropout 비율
+        attn_drop (float): 어텐션 Dropout 비율
+        drop_path (float): Drop path 비율
+        norm_layer: 정규화 레이어
+        attn_head_dim: 어텐션 헤드의 차원
+        out_dim: 출력 차원
+
+    Returns:
+        torch.Tensor: 어텐션 풀링 결과
+    """
     
     def forward(self, x):
         x_q = x.mean(1, keepdim=True)
@@ -431,6 +604,24 @@ class AttentionPoolingBlock(AttentiveBlock):
 
 
 class RMSNorm(nn.Module):
+    """
+    RMS (Root Mean Square) 정규화를 수행하는 레이어입니다.
+    
+    입력 텐서의 각 특징 차원에 대해 RMS 정규화를 적용합니다.
+    학습 가능한 스케일 파라미터를 사용하여 정규화된 값을 조정합니다.
+    
+    Args:
+        hidden_size (int): 입력 특징의 차원
+        eps (float): 수치 안정성을 위한 엡실론 값. 기본값은 1e-6
+        
+    Attributes:
+        weight (nn.Parameter): 학습 가능한 스케일 파라미터
+        variance_epsilon (float): 수치 안정성을 위한 엡실론 값
+
+    Returns:
+        torch.Tensor: RMS 정규화가 적용된 텐서
+    """
+
     def __init__(self, hidden_size, eps=1e-6):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
@@ -445,6 +636,27 @@ class RMSNorm(nn.Module):
 
 
 class Attention(nn.Module):
+    """
+    멀티헤드 어텐션 모듈입니다.
+
+    일반적인 어텐션 메커니즘과 Flash Attention을 모두 지원합니다.
+    Query, Key, Value를 생성하고 스케일된 닷-프로덕트 어텐션을 수행합니다.
+
+    Args:
+        dim (int): 입력 특징의 차원
+        num_heads (int): 어텐션 헤드의 수. 기본값은 8
+        qkv_bias (bool): QKV 선형 변환에 bias를 사용할지 여부. 기본값은 False
+        attn_drop (float): 어텐션 드롭아웃 비율. 기본값은 0.0
+        proj_drop (float): 출력 프로젝션의 드롭아웃 비율. 기본값은 0.0
+        use_flash_attn (bool): Flash Attention 사용 여부. 기본값은 False
+        causal (bool): 인과적 어텐션 사용 여부. 기본값은 False
+        norm_layer: 정규화 레이어. 기본값은 nn.LayerNorm
+        qk_normalization (bool): Q,K에 정규화 적용 여부. 기본값은 False
+        use_fused_rmsnorm (bool): Fused RMSNorm 사용 여부. 기본값은 False
+
+    Returns:
+        torch.Tensor: 어텐션이 적용된 출력 텐서
+    """
     def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0., use_flash_attn=False,
                  causal=False, norm_layer=nn.LayerNorm, qk_normalization=False, use_fused_rmsnorm=False):
         super().__init__()
@@ -546,6 +758,11 @@ class Mlp(nn.Module):
 
 
 class Block(nn.Module):
+    """
+    어텐션 과정을 포함한 Attention 블록 코드입니다.
+    norm1 -> attn -> drop_path1 -> norm2 -> mlp -> drop_path2 
+    이 순서로 진행됩니다.
+    """
     
     def __init__(
             self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0., init_values=None,
@@ -599,6 +816,7 @@ class Block(nn.Module):
 
 class PatchEmbed(nn.Module):
     """ 3D Image to Patch Embedding
+    임베딩 전에 3D 이미지를 패치로 변환하는 모듈입니다.
     """
     
     def __init__(
@@ -633,6 +851,43 @@ class PatchEmbed(nn.Module):
         return x
 
 class PretrainVisionTransformer_clean(nn.Module):
+    """
+    사전 학습된 비전 트랜스포머 모델에 대한 구조체입니다.
+    
+    주요 특징:
+    - 3D 패치 임베딩을 사용하여 비디오/이미지 입력을 처리
+    - 위치 임베딩에서 시간과 공간 정보를 분리하여 처리 가능
+    - Flash Attention, Fused RMSNorm 등 최적화된 연산 지원
+    - 체크포인팅을 통한 메모리 효율적인 학습 지원
+    
+    functions:
+    - __init__: 패치 및 포지셔널 임베딩 진행, 블럭을 Depth만큼 통과,
+                (norm1 -> attn -> drop_path1 -> norm2 -> mlp -> drop_path2),
+                이후 Attention Mean pooling 을 위한 Clip Projector 생성
+    - init_pos_embed: 3d sin-cos 포지셔널 임베딩 진행 (H, W, T), 즉 비디오를 이미지로 변환
+    - _init_weights(m): trunc_normalization 진행, weight = 1, bias = 0 으로 초기화
+    - fix_init_weight: attn.proj.weight.data, mlp.fc2.weight.data 에 대해 2.0 * layer_id + 1 로 나누기
+    - no_weight_decay: weight decay를 쓰지 않는 layer를 set로 지정
+    - expand_pos_embed: 현재 frame 수와 new_t_size가 맞지 않으면, interpolation 진행, (class_token, dist_token 제외)
+    - forward: cls_token 추가, cls_token과 img_pos_embed를 더하여 최종 pos_embed 생성 및 interpolation 진행
+                Clip Projector 를 이용하여 최종 특징 추출
+ 
+    Args:
+        in_chans (int): 입력 채널 수. 기본값 3
+        patch_size (int): 패치 크기. 기본값 14
+        img_size (int): 입력 이미지 크기. 기본값 224
+        qkv_bias (bool): QKV에 bias 사용 여부. 기본값 False
+        drop_path_rate (float): Drop path 비율. 기본값 0.25
+        embed_dim (int): 임베딩 차원. 기본값 1408
+        num_heads (int): Attention head 수. 기본값 16
+        mlp_ratio (float): MLP 확장 비율. 기본값 48/11
+        init_values (float): Layer scale 초기값. 기본값 1e-5
+        qk_normalization (bool): QK 정규화 사용 여부. 기본값 True
+        depth (int): 트랜스포머 레이어 수. 기본값 40
+        num_frames (int): 입력 프레임 수. 기본값 8
+        tubelet_size (int): 시간 차원 패치 크기. 기본값 1
+        
+    """
     def __init__(
             self,
             in_chans: int = 3,
