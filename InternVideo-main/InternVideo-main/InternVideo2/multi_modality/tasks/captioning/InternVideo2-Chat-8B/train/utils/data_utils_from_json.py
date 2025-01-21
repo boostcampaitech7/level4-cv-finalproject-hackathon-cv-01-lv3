@@ -70,7 +70,7 @@ def read_frames_cv2(
     print(f"total_frames: {total_frames}, fps: {fps}")
 
     # segment에 해당하는 frame만 추가
-    for idx in range(frame_indices[0], frame_indices[1]):    
+    for idx in range(frame_indices[0], 8):#frame_indices[1]):    
         ret, frame = video.read()
         if not ret:
             raise Exception(f"Failed to read frame: {idx}")
@@ -94,7 +94,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
     CSV로부터 segment를 불러오고, frame 변환 및 preprocess를 진행하여 Tensor로 반환한다.
     
     Args:
-        csv_path: str, CSV 파일 경로
+        json_path: str, JSON 파일 경로
         video_root: str, 동영상 루트 경로(segments 폴더 경로)
         use_segment: bool, 단일 segment 사용 여부
         start_time: int, 시작 시간
