@@ -2,12 +2,6 @@ from tqdm import tqdm
 import os
 import pandas as pd
 from load_video import make_clip_video
-    
-### 설정해주세요
-metadata = f"./segments.csv" # CSV형태의 Metadata가 있는 경로
-input_video = f"./origin" # mp4 형태의 Video가 있는 경로
-output_folder = f"./clips/yt8m" # Cut된 Clip이 저장될 경로
-###
 
 def main() -> None:
     meta = pd.read_csv(metadata)
@@ -41,4 +35,11 @@ def main() -> None:
             iter_progress.update(1)
 
 if __name__ == "__main__":
+
+    ### 설정해주세요
+    metadata = f"./segments.csv" # CSV형태의 Metadata가 있는 경로
+    input_video = f"./origin" # mp4 형태의 Video가 있는 경로
+    output_folder = f"./clips" # Cut된 Clip이 저장될 경로
+    ###
+
     main()
