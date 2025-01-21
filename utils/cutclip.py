@@ -1,7 +1,7 @@
 from tqdm import tqdm
 import os
 import pandas as pd
-from load_video import make_clip_video, make_image_video
+from load_video import make_clip_video, make_image_video, time_to_sec
 import math
 
 def main() -> None:
@@ -29,7 +29,7 @@ def main() -> None:
                 raise ValueError(f"Couldn't find the origin video! {origin_video_path}")
             
             # start_time이 전체 비디오의 duration 범위 내에 있는지 확인
-            if start_time > duration:
+            if time_to_sec(start_time) > duration:
                 raise ValueError(f"Start Time {start_time} is larger than duration {duration}")
             
             # end_time과 start_time이 같지 않고, end_time이 nan이 아닌 경우, 클립을 만든다고 판단
@@ -37,7 +37,7 @@ def main() -> None:
             if end_time != start_time and not math.isnan(end_time):
                 
                 # end_time이 start_time보다 뒤에 있는지 확인
-                if start_time > end_time:
+                if time_to_sec(start_time) > time_to_sec(end_time):
                     raise ValueError(f"Start Time {start_time} is larger than End Time {end_time}")
                 sub_dir = f"{output_folder_video}/{vtype}/{category}"
                 os.makedirs(sub_dir, exist_ok=True)    
