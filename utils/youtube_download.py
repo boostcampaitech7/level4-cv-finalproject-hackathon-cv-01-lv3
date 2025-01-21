@@ -16,7 +16,7 @@ def main() -> None:
     os.makedirs(prefix_path, exist_ok=True)
 
     # 전체에 리스트에 대해서 다운로드
-    for i, vid_url in enumerate(video_lists):
+    for vid_url in video_lists:
         video_path = f"./{prefix_path}/{video_type}_{category}_{vid_url[-11:]}.mp4"
         if not os.path.exists(video_path):
 
@@ -44,5 +44,5 @@ if __name__ == "__main__":
     category = "Movieclips" # 원본 비디오의 카테고리
     output_csv = "youtube_download_log" # 최종 logsheet이 저장될 이름
     ###
-    
+
     main()
