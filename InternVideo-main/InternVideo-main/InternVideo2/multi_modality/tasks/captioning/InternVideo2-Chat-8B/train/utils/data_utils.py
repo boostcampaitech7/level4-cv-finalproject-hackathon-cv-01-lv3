@@ -51,7 +51,8 @@ def read_frames_cv2(
     if not video.isOpened() or video.get(cv2.CAP_PROP_FRAME_COUNT) == 0:
         raise Exception(f"Failed to open video: {video_path}")
     else:
-        print(f"Successfully opened video: {video_path}")
+        #print(f"Successfully opened video: {video_path}")
+        pass
     
     # 단일 segment -> else (01.18, deamin)
     if not use_segment:
@@ -61,15 +62,15 @@ def read_frames_cv2(
         frame_indices: list[int, int] = [0, int(video.get(cv2.CAP_PROP_FRAME_COUNT))]
 
     video.set(cv2.CAP_PROP_POS_FRAMES, frame_indices[0])
-    print(f"frame_indices: {frame_indices}")
+    #print(f"frame_indices: {frame_indices}")
     
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = video.get(cv2.CAP_PROP_FPS)
     
-    print(f"total_frames: {total_frames}, fps: {fps}")
+    #print(f"total_frames: {total_frames}, fps: {fps}")
 
     # segment에 해당하는 frame만 추가
-    for idx in range(frame_indices[0], frame_indices[1]):    
+    for idx in range(frame_indices[0], 10):    
         ret, frame = video.read()
         if not ret:
             raise Exception(f"Failed to read frame: {idx}")
@@ -131,6 +132,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         assert csv_path is not None and isinstance(csv_path, str), "csv_path must be a string, or not None"
         
         # csv 파일 읽기
+        # json 파일 읽어올 수 있도록 수정
         self.segments_df: pd.DataFrame = pd.read_csv(csv_path)
         self.video_root: str = video_root
         self.use_segment: bool = use_segment
@@ -153,21 +155,22 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             segment_df = self.segments_df[self.segments_df['TRAIN/TEST'] == 'train']
         else:
             segment_df = self.segments_df[self.segments_df['TRAIN/TEST'] == 'test']
+            
         # segment 예시: "'ViDEOPATH'_'STARTTIME(HH_MM_SS)'_'ENDTIME(HH_MM_SS)'"
         segment_name = segment_df.iloc[index]['SEGMENT_NAME']
-        print(f"segment_name: {segment_name}")
+        #print(f"segment_name: {segment_name}")
         parts = segment_name.split('_')
-        print(f"parts: {parts}")
+        #print(f"parts: {parts}")
         video_name = parts[0]
-        print(f"video_name: {video_name}")
+        #print(f"video_name: {video_name}")
         start_time = '_'.join(parts[1:4])
-        print(f"start_time: {start_time}")
+        #print(f"start_time: {start_time}")
         end_time = '_'.join(parts[4:7])
-        print(f"end_time: {end_time}")
+        #print(f"end_time: {end_time}")
 
         
         annotation = segment_df.iloc[index]['ANNO']
-        print(f"annotation: {annotation}")
+        #print(f"annotation: {annotation}")
         video_path = os.path.join(self.video_root, video_name)
         assert video_path is not None and isinstance(video_path, str), "video_path must be a string, or not None"
         assert annotation is not None and isinstance(annotation, str), "annotation must be a string, or not None"
@@ -202,6 +205,8 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         }
         return data
     
+        # index를 통해서 Dataset에 접근했을 때,
+        # 해당 Index에 해당하는 segment의 정보들을 반환할 수 있도록만 유지해주시면 됩니다.
     
     def preprocess_frames(self, frames, use_albumentations: bool = False):
         '''
@@ -226,12 +231,12 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             # 전체 프레임에 대해 한 번에 resize 적용
             T, C, H, W = frames.shape
             frames = frames.contiguous().view(-1, C, H, W)  # (T * C, H, W)
-            print(f"frames shape: {frames.shape}")
+            #print(f"frames shape: {frames.shape}")
             frames = self.transform(frames)
             frames = frames.view(T, C, 224, 224)  # (T, C, 224, 224)
   
-            print(f"Input frames shape: {frames.shape}")
-            print(f"Input frames dtype: {frames.dtype}")
+            #print(f"Input frames shape: {frames.shape}")
+            #print(f"Input frames dtype: {frames.dtype}")
             return frames
         
         except Exception as e:
