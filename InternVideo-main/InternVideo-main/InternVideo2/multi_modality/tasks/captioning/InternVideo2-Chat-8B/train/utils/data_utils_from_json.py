@@ -6,6 +6,7 @@ import pandas as pd
 import os
 from torchvision import transforms
 import albumentations as A
+import json
 
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -69,7 +70,7 @@ def read_frames_cv2(
     print(f"total_frames: {total_frames}, fps: {fps}")
 
     # segment에 해당하는 frame만 추가
-    for idx in range(frame_indices[0], frame_indices[1]):    
+    for idx in range(frame_indices[0], 8):#frame_indices[1]):    
         ret, frame = video.read()
         if not ret:
             raise Exception(f"Failed to read frame: {idx}")
@@ -93,7 +94,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
     CSV로부터 segment를 불러오고, frame 변환 및 preprocess를 진행하여 Tensor로 반환한다.
     
     Args:
-        csv_path: str, CSV 파일 경로
+        json_path: str, JSON 파일 경로
         video_root: str, 동영상 루트 경로(segments 폴더 경로)
         use_segment: bool, 단일 segment 사용 여부
         start_time: int, 시작 시간
@@ -115,8 +116,8 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
     '''
     def __init__(
             self,
-            csv_path: str = None,
-            video_root: str = None,
+            json_path: str = None,
+            video_root: str = None, # "???/data/clips"
             use_segment: bool = True,
             # start_time: int = 0, 현재는 segment_name을 파싱하여 대체 중
             # end_time: int = 0,
@@ -128,10 +129,10 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             train: bool = True,
     ):
         # video
-        assert csv_path is not None and isinstance(csv_path, str), "csv_path must be a string, or not None"
+        assert json_path is not None and isinstance(json_path, str), "json_path must be a string, or not None"
         
-        # csv 파일 읽기
-        self.segments_df: pd.DataFrame = pd.read_csv(csv_path)
+        # json 파일 읽기
+        self.labels: list = [os.path.join(json_path, x) for x in os.listdir(json_path) if x.endswith('.json')]
         self.video_root: str = video_root
         self.use_segment: bool = use_segment
         self.s3_client: bool = s3_client
@@ -142,41 +143,28 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         self.max_audio_length: int = max_audio_length
         
     def __len__(self):
-        # 총 sample 수(segment 수) 반환, train/test 여부에 따라 다르게 반환
-        if self.train:
-            return len(self.segments_df[self.segments_df['TRAIN/TEST'] == 'train'])
-        else:
-            return len(self.segments_df[self.segments_df['TRAIN/TEST'] == 'test'])
+        # json형태의 annotations가 각 segment마다 하나씩 존재하므로, json파일의 개수를 반환하면 됨
+        return len(self.labels)
     
     def __getitem__(self, index):
-        if self.train:
-            segment_df = self.segments_df[self.segments_df['TRAIN/TEST'] == 'train']
-        else:
-            segment_df = self.segments_df[self.segments_df['TRAIN/TEST'] == 'test']
         # segment 예시: "'ViDEOPATH'_'STARTTIME(HH_MM_SS)'_'ENDTIME(HH_MM_SS)'"
-        segment_name = segment_df.iloc[index]['SEGMENT_NAME']
-        print(f"segment_name: {segment_name}")
-        parts = segment_name.split('_')
-        print(f"parts: {parts}")
-        video_name = parts[0]
-        print(f"video_name: {video_name}")
-        start_time = '_'.join(parts[1:4])
-        print(f"start_time: {start_time}")
-        end_time = '_'.join(parts[4:7])
-        print(f"end_time: {end_time}")
+        with open(self.labels[index], 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        segment_name = list(data.keys())[0]
+        start_time = data[segment_name]['start_time']
+        end_time = data[segment_name]['end_time']
 
         
-        annotation = segment_df.iloc[index]['ANNO']
-        print(f"annotation: {annotation}")
-        video_path = os.path.join(self.video_root, video_name)
+        annotation = data[segment_name]['caption']
+        video_path = os.path.join(self.video_root, ".".join([segment_name, "mp4"]))
         assert video_path is not None and isinstance(video_path, str), "video_path must be a string, or not None"
         assert annotation is not None and isinstance(annotation, str), "annotation must be a string, or not None"
         
         # HH_MM_SS 형식을 초 단위로 변환
-        h, m, s = map(int, start_time.split('_'))
+        h, m, s = map(int, start_time.split(':'))
         start_time = h * 3600 + m * 60 + s
         
-        h, m, s = map(int, end_time.split('_'))
+        h, m, s = map(int, end_time.split(':'))
         end_time = h * 3600 + m * 60 + s
         
         # 동영상 읽기
@@ -195,10 +183,12 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             'frames': self.preprocess_frames(frames),
             'audio': audio,
             'frame_indices': frame_indices,
-            'segment_name': video_name + '_' + str(start_time) + '_' + str(end_time),
+            'segment_name': segment_name,
             'duration': duration,
             'video_path': video_path,
-            'annotation': annotation
+            'annotation': annotation,
+            'start_time' : start_time,
+            'end_time' : end_time
         }
         return data
     
@@ -280,13 +270,17 @@ class InternVideo2_VideoChat2_DataLoader(DataLoader):
                 return {
                     'frames': torch.stack([item['frames'] for item in batch]),
                     'segment_names': [item['segment_name'] for item in batch],
-                    'annotations': [item['annotation'] for item in batch] if 'annotation' in batch[0] else None
+                    'start_times' : [item['start_time'] for item in batch],
+                    'end_times' : [item['end_time'] for item in batch],
+                    'annotations': [item['annotation'] for item in batch] if 'annotation' in batch[0] else None,
                 }
             else:
                 return {
                     'frames': torch.stack([item['frames'] for item in batch]),
                     'audio': torch.stack([item['audio'] for item in batch]),
                     'segment_names': [item['segment_name'] for item in batch],
+                    'start_times' : [item['start_time'] for item in batch],
+                    'end_times' : [item['end_time'] for item in batch],
                     'annotations': [item['annotation'] for item in batch] if 'annotation' in batch[0] else None
                 }
         
