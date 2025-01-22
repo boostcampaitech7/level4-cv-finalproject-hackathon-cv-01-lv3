@@ -52,14 +52,16 @@ def inference(
         pin_memory=True,
         use_audio=False
     )
-
+    print("length of dataset:",len(test_dataset))
+    print("labels of dataset:",test_dataset.labels)
+    print("length of dataloader:",len(test_loader))
     model.eval()
     for batch in test_loader:
         frames = batch['frames'].to(device)
         outputs = model.chat(
             tokenizer=tokenizer,
             msg='',
-            user_prompt="Describe the video step by step",
+            user_prompt="Describe the video in one sentence",
             instruction="Carefully watch the video and describe what is happening in detail.",
             media_type='video',
             media_tensor=frames,
@@ -70,36 +72,7 @@ def inference(
                 'max_new_tokens': 256,
             }
         )
-        print(f"Validation Output: {outputs}")
-
-
-def validation(model, dataset, dataloader, video_path, tokenizer, device, criterion, rouge):
-    model.eval()
-    
-    print(f"Validation start")
-    for batch in dataloader:
-        if torch.cuda.is_available():
-            batch = batch.to(device)
-        
-        outputs = model.chat(
-            tokenizer=tokenizer,
-            msg='',
-            user_prompt="Describe the video step by step",
-            instruction="Carefully watch the video and describe what is happening in detail.",
-            media_type='video',
-            chat_history=[],
-            return_history=True,
-            generation_config={
-                'do_sample': False,
-                'max_new_tokens': 256,
-            }
-        )
-        
-        print(f"Validation Output: {outputs}")
-        print(f"Annotation: {batch['annotation']}")
-        print(f"Loss: {criterion(outputs, batch['annotation'])}")
-        print(f"ROUGE Score: {rouge.score(outputs, batch['annotation'])}")
-        print(f"Validation end")
+        print(f"{batch['segment_name']} Output: {outputs}")
 
 def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
