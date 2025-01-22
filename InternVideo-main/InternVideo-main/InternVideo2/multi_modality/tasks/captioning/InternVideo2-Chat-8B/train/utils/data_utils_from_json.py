@@ -186,7 +186,9 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             'segment_name': segment_name,
             'duration': duration,
             'video_path': video_path,
-            'annotation': annotation
+            'annotation': annotation,
+            'start_time' : start_time,
+            'end_time' : end_time
         }
         return data
     
@@ -268,13 +270,17 @@ class InternVideo2_VideoChat2_DataLoader(DataLoader):
                 return {
                     'frames': torch.stack([item['frames'] for item in batch]),
                     'segment_names': [item['segment_name'] for item in batch],
-                    'annotations': [item['annotation'] for item in batch] if 'annotation' in batch[0] else None
+                    'start_times' : [item['start_time'] for item in batch],
+                    'end_times' : [item['end_time'] for item in batch],
+                    'annotations': [item['annotation'] for item in batch] if 'annotation' in batch[0] else None,
                 }
             else:
                 return {
                     'frames': torch.stack([item['frames'] for item in batch]),
                     'audio': torch.stack([item['audio'] for item in batch]),
                     'segment_names': [item['segment_name'] for item in batch],
+                    'start_times' : [item['start_time'] for item in batch],
+                    'end_times' : [item['end_time'] for item in batch],
                     'annotations': [item['annotation'] for item in batch] if 'annotation' in batch[0] else None
                 }
         
