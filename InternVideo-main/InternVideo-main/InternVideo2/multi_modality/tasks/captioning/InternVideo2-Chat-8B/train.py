@@ -51,7 +51,7 @@ def train(
             torch_dtype=torch.bfloat16,
             trust_remote_code=True
         )
-        
+
     train_dataset = InternVideo2_VideoChat2_Dataset(
         csv_path=csv_path,
         video_root=video_path,
@@ -90,17 +90,20 @@ def train(
         learning_rate=learning_rate,
         weight_decay=weight_decay
     )
-    # # text_inputs.input_ids의 shape를 기반으로 video_idx 생성
-    # batch_size, seq_length = text_inputs.input_ids.shape
-    # video_idx = torch.zeros((batch_size, seq_length)).to(device)
-
-    # # 비디오 토큰을 위한 96개의 위치만 1로 설정
-    # # 예: 처음 96개 위치에 비디오 토큰 배치
-    # video_idx[:, :96] = 1
 
     from rouge_score import rouge_scorer
     rouge = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
-    
+
+    query_embedding_size = model.query_tokens.shape[1] + model.extra_query_tokens.shape[1]
+    video_index = torch.ones(train_batch_size, query_embedding_size).to(device)
+
+    # 학습 도중에 Text와 Video의 각 embedding vector를 합치는 과정이 있습니다.
+    # 현재 알고리즘은, video_index 크기를 text embedding vector보다 작게 유지시켜야 합니다.
+    # (내부 알고리즘에서 video_index를 text에 맞춤)
+    # 따라서 추후 논의 전까지, raise 검증문을 하나 추가합니다.
+    if train_batch_size * query_embedding_size > 300:
+        raise ValueError("upper bound of Video index is 300, video_index=train_batch_size*query_embedding_size")
+
     for epoch in range(num_epochs):
         for batch in train_loader:
             if torch.cuda.is_available():
@@ -127,8 +130,7 @@ def train(
                 attention_mask=text_inputs.attention_mask,
                 video=frames,
                 labels=text_inputs.input_ids,
-                video_idx=torch.ones(2, 96).to(device),
-                # video_idx=torch.ones_like(text_inputs.input_ids)  # 비디오 토큰 위치 표시
+                video_idx=video_index
             )
 
             loss = outputs.loss
