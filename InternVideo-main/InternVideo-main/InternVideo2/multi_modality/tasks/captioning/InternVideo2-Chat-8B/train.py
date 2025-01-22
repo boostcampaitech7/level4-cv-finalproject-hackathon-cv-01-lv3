@@ -127,8 +127,8 @@ def train(
                 attention_mask=text_inputs.attention_mask,
                 video=frames,
                 labels=text_inputs.input_ids,
-                # video_idx=torch.ones(2, 96).to(device),
-                video_idx=torch.ones_like(text_inputs.input_ids)  # 비디오 토큰 위치 표시
+                video_idx=torch.ones(2, 96).to(device),
+                # video_idx=torch.ones_like(text_inputs.input_ids)  # 비디오 토큰 위치 표시
             )
 
             loss = outputs.loss
@@ -140,7 +140,7 @@ def train(
             print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}")
             
             if epoch % validation_interval == 0:
-                validation(model, test_dataset, test_loader, video_path, tokenizer, device)
+                validation(model, test_dataset, test_loader, tokenizer, device)
                 model.train()
                 
 
@@ -166,9 +166,9 @@ def validation(model, dataset, dataloader, tokenizer, device):
                 attention_mask=text_inputs.attention_mask,
                 video=frames,
                 labels=text_inputs.input_ids,
-                # video_idx=torch.ones(2, 96).to(device),
+                video_idx=torch.ones(2, 96).to(device),
                 # video_idx=torch.tensor([1] * text_inputs.input_ids.shape[0]).to(device)
-                video_idx=torch.ones_like(text_inputs.input_ids)
+                # video_idx=torch.ones_like(text_inputs.input_ids)
             )
             
             total_loss += outputs.loss.item()
@@ -197,4 +197,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

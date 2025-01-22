@@ -3,8 +3,8 @@ import torch
 from utils.data_utils import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 
 def test_dataset_and_loader(
-    csv_path: str,
-    video_root: str,
+    csv_path: str = None,
+    video_root: str = None,
     batch_size: int = 2,
     use_audio: bool = False,
     num_workers: int = 0  # 디버깅을 위해 0으로 설정
@@ -17,7 +17,8 @@ def test_dataset_and_loader(
             csv_path=csv_path,
             video_root=video_root,
             use_segment=True,
-            use_audio=use_audio
+            use_audio=use_audio,
+            train=True
         )
         print(f"데이터셋 생성 성공: 총 {len(dataset)}개 샘플")
     except Exception as e:
@@ -29,7 +30,7 @@ def test_dataset_and_loader(
         dataloader = InternVideo2_VideoChat2_DataLoader(
             dataset=dataset,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=num_workers,
             use_audio=use_audio
         )
@@ -68,9 +69,15 @@ def test_dataset_and_loader(
 if __name__ == "__main__":
     # 테스트 설정
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(current_dir.split('train'))
-    video_path = os.path.join(current_dir.split('tasks/captioning/InternVideo2-Chat-8B/train'), "demo/data")
-    csv_path = os.path.join(current_dir.split('tasks/captioning/InternVideo2-Chat-8B/train'), "data", "internVideo2_dataformat_011725.csv")
+    
+    # 상위 디렉토리로 이동하여 필요한 경로 생성
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))  # multi_modality 폴더까지
+    video_path = os.path.join(base_dir, "demo", "data")
+    csv_path = os.path.join(base_dir, "demo", "data", "internVideo2_dataformat_011725.csv")
+    
+    # 또는 하드코딩된 경로 사용
+    # csv_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/data/internVideo2_dataformat_011725.csv"
+    
     test_dataset_and_loader(
         csv_path=csv_path,
         video_root=video_path,

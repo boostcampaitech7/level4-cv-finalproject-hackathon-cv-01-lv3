@@ -6,6 +6,8 @@ from modeling_videochat2 import InternVideo2_VideoChat2
 from decord import VideoReader, cpu
 import torch.nn.functional as F
 import torchvision.transforms as T
+from PIL import Image
+import numpy as np
 
 class VideoCaption:
     def __init__(self, model_path):
@@ -21,13 +23,14 @@ class VideoCaption:
         )
 
         # 모델 초기화
-        if torch.cuda  .is_available():
+        if torch.cuda.is_available():
             self.model = InternVideo2_VideoChat2.from_pretrained(
                 model_path,
                 config=self.config,
                 torch_dtype=torch.bfloat16,
                 trust_remote_code=True
             ).cuda()
+            
         else:
             self.model = InternVideo2_VideoChat2.from_pretrained(
                 model_path,
@@ -37,24 +40,34 @@ class VideoCaption:
             )
         self.model.eval()
 
-    def load_video(self, video_path, num_segments=8, resolution=224, hd_num=6):
+    def load_media(self, media_path, media_type='video', num_segments=8, resolution=224, hd_num=6):
         """비디오 로드 및 전처리"""
-        vr = VideoReader(video_path, ctx=cpu(0))
-        
-        # 균일한 간격으로 프레임 인덱스 추출
-        num_frames = len(vr)
-        indices = self._get_frame_indices(num_frames, num_segments)
-        
-        # 프레임 추출 및 전처리
-        frames = vr.get_batch(indices).asnumpy()
-        # NumPy 배열을 PyTorch Tensor로 변환
-        frames = torch.from_numpy(frames)
-        frames = frames.permute(0, 3, 1, 2)  # (N, C, H, W)
-        
-        # 정규화
-        frames = self._transform_frames(frames, resolution)
-        
-        return frames.unsqueeze(0)  # 배치 차원 추가
+        if media_type == 'video':
+            vr = VideoReader(media_path, ctx=cpu(0))
+
+            # 균일한 간격으로 프레임 인덱스 추출
+            num_frames = len(vr)
+            indices = self._get_frame_indices(num_frames, num_segments)
+            
+            # 프레임 추출 및 전처리
+            frames = vr.get_batch(indices).asnumpy()
+            # NumPy 배열을 PyTorch Tensor로 변환
+            frames = torch.from_numpy(frames)
+            frames = frames.permute(0, 3, 1, 2)  # (N, C, H, W)
+            
+            # 정규화
+            frames = self._transform_frames(frames, resolution)
+            
+            return frames.unsqueeze(0)  # 배치 차원 추가
+
+        elif media_type == 'image':
+            image = Image.open(media_path)
+            image = image.resize((resolution, resolution))
+            image = np.array(image)
+            image = torch.from_numpy(image)
+            image = image.permute(2, 0, 1)  # (C, H, W)
+            image = image.unsqueeze(0)  # 배치 차원 추가
+            return image
 
     def _get_frame_indices(self, num_frames, num_segments):
         """균일한 간격으로 프레임 인덱스 추출"""
@@ -75,13 +88,23 @@ class VideoCaption:
         
         return transform(frames)
 
-    def generate_caption(self, video_path):
+    def generate_caption(self, media_path, media_type='video'):
         """비디오 캡션 생성"""
+
         # 비디오 로드 및 전처리
-        video_tensor = self.load_video(
-            video_path, 
-            num_segments=self.config.model_config.vision_encoder.num_frames
-        )
+        if media_type == 'video':
+            video_tensor = self.load_media(
+                media_path, 
+                media_type=media_type,
+                num_segments=self.config.model_config.vision_encoder.num_frames
+            )
+        
+        elif media_type == 'image':
+            video_tensor = self.load_media(
+                media_path, 
+                media_type=media_type,
+                num_segments=1
+            )
         
         if torch.cuda.is_available():
             video_tensor = video_tensor.cuda()
@@ -92,10 +115,10 @@ class VideoCaption:
         # 캡션 생성
         response, _ = self.model.chat(
             tokenizer=self.tokenizer,
-            msg='The video starts with a man and a dog playing in the snow. The man is kneeling down and the dog is running around him. The man is wearing a black jacket and blue jeans. The dog is a light brown color and has a black nose. The snow is falling down from the sky and covering the ground. The man and the dog are having fun playing in the snow. The man is throwing snow at the dog and the dog is running around and playing with the snow. The man is also throwing snow at the camera and the dog is running around and playing with the snow. The man and the dog are having a great time playing in the snow. The video ends with the man and the dog still playing in the snow.',
+            msg='',
             user_prompt='Describe the video step by step',
             instruction="Carefully watch the video and describe what is happening in detail.",
-            media_type='video',
+            media_type=media_type,
             media_tensor=video_tensor,
             chat_history=chat_history,
             return_history=True,
@@ -108,19 +131,17 @@ class VideoCaption:
         return response
 
 def main():
-    
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     # 모델 경로 설정
-    model_path = os.path.join(current_dir)
+    model_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/tasks/captioning/InternVideo2-Chat-8B"
     
     # VideoCaption 인스턴스 생성
     captioner = VideoCaption(model_path)
     
     # 비디오 경로 설정
-    video_path = os.path.join(current_dir.split("tasks/captioning/InternVideo2-Chat-8B")[0], "demo/example1.mp4")
+    media_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/data/0a6f4bacdfdb98147d2014f359c4b589c2c93084.jpg"
     
     # 캡션 생성
-    caption = captioner.generate_caption(video_path)
+    caption = captioner.generate_caption(media_path, media_type='image')
     print("Generated Caption:", caption)
 
 if __name__ == "__main__":

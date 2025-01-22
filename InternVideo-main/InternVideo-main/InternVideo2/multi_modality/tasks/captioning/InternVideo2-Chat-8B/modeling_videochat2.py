@@ -54,6 +54,19 @@ class InternVideo2_VideoChat2(BaseMLLM):
         else:
             text_embeds = self.pad_text_embeds(input_ids=input_ids, image=image, video=video, return_visual=False, video_idx=video_idx, image_idx=image_idx,  instruction = instruction)
         
+        # Transformer.AutoModelForCausalLM.from_config을 통해 정의한 'Mistral-7B' 모델을 사용함.
+        """
+        outputs = self.lm(
+            inputs_embeds=text_embeds,      # 토큰 임베딩 텐서 (batch_size, sequence_length, hidden_size)
+            attention_mask=attention_mask,   # 어텐션 마스크 (batch_size, sequence_length)
+            labels=labels,                   # 정답 레이블 (batch_size, sequence_length)
+            output_hidden_states=True,       # 모든 레이어의 hidden states 반환 여부
+            return_dict=True,               # 딕셔너리 형태로 반환할지 여부
+        )
+
+        label이 주어졌을 때
+        output은 loss, logit 속성을 가짐.(output.loss, output.logits)
+        """
         outputs = self.lm(
             inputs_embeds=text_embeds,
             attention_mask=attention_mask,
@@ -74,19 +87,33 @@ class InternVideo2_VideoChat2(BaseMLLM):
         return_visual: bool = False,
         instruction = None,
     ):
-        # text_embeds
+        # text_embeds shape: [batch_size, seq_len, hidden_dim], [2, 150, 4096]
         text_embeds = self.lm.get_input_embeddings()(input_ids.long()).detach()
+        print(f"[Debug] Text Embeddings Shape: {text_embeds.shape}")  # [batch_size, seq_len, hidden_dim]
+        print(f"[Debug] Input IDs Shape: {input_ids.shape}")  # [batch_size, seq_len]
 
         visual = None
         visual_idx = None
 
         if image is not None:
             B, T, C, H, W = image.shape
+            print(f"[Debug] Original Image Shape: [B={B}, T={T}, C={C}, H={H}, W={W}]")
+            
             image = image.permute(0, 2, 1, 3, 4)
+            print(f"[Debug] Permuted Image Shape: {image.shape}")
+            
             prompt_image_embeds = self.encode_vision(image, instruction=instruction)
+            print(f"[Debug] Vision Encoder Output Shape: {prompt_image_embeds.shape}")
+            
             visual = prompt_image_embeds
             prompt_image_embeds = self.project_up(prompt_image_embeds)
+            print(f"[Debug] After Project Up Shape: {prompt_image_embeds.shape}")
+            
             prompt_image_embeds = prompt_image_embeds.view(-1, prompt_image_embeds.shape[-1])
+            print(f"[Debug] Reshaped Image Embeds Shape: {prompt_image_embeds.shape}")
+            
+            print(f"[Debug] Image Index Shape: {image_idx.shape}")
+            print(f"[Debug] Number of Image Tokens: {(image_idx == 1).sum()}")
             visual_idx = image_idx
             text_embeds[image_idx == 1] = text_embeds[image_idx == 1] * 0 + prompt_image_embeds.to(text_embeds.device)
         elif video is not None:
@@ -95,14 +122,37 @@ class InternVideo2_VideoChat2(BaseMLLM):
                 N = 1
             else:
                 B, N, T, C, H, W = video.shape
+            
+            print(f"[Debug] Original Video Shape: [B={B}, N={N}, T={T}, C={C}, H={H}, W={W}]")
+            
             video = video.reshape(B*N, T, C, H, W).permute(0, 2, 1, 3, 4)
+            print(f"[Debug] Reshaped Video Shape: {video.shape}")
+            
             prompt_video_embeds = self.encode_vision(video, instruction=instruction)
+            print(f"[Debug] Vision Encoder Output Shape: {prompt_video_embeds.shape}")
+            
             visual = prompt_video_embeds
             prompt_video_embeds = self.project_up(prompt_video_embeds)
+            print(f"[Debug] After Project Up Shape: {prompt_video_embeds.shape}")
+            
             prompt_video_embeds = prompt_video_embeds.view(-1, prompt_video_embeds.shape[-1])
-            visual_idx = video_idx
-            text_embeds[video_idx == 1] = text_embeds[video_idx == 1] * 0 + prompt_video_embeds.to(text_embeds.device).to(text_embeds.dtype)
+            print(f"[Debug] Reshaped Video Embeds Shape: {prompt_video_embeds.shape}")
+            
+            print(f"[Debug] Video Index Shape: {video_idx.shape}")
+            print(f"[Debug] Number of Video Tokens: {(video_idx == 1).sum()}")
+            # visual_idx = video_idx
+            # text_embeds[video_idx == 1] = text_embeds[video_idx == 1] * 0 + prompt_video_embeds.to(text_embeds.device).to(text_embeds.dtype)
+            # video_idx를 text_embeds와 같은 sequence length로 패딩
+            batch_size = video_idx.shape[0]
+            seq_length = text_embeds.shape[1]  # 150
+            padded_video_idx = torch.zeros(batch_size, seq_length).to(video_idx.device)
+            padded_video_idx[:, :video_idx.shape[1]] = video_idx  # 처음 96개 위치에 원래 video_idx 복사
+            
+            # 이제 패딩된 인덱스로 마스킹
+            text_embeds[padded_video_idx == 1] = text_embeds[padded_video_idx == 1] * 0 + prompt_video_embeds.to(text_embeds.device).to(text_embeds.dtype)
+            
         else:
+            print(f"[Debug] No visual input provided")
             logger.warn(f"don't get visual input, input_ids: {input_ids}")
             
         if return_visual:
