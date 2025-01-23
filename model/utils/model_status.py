@@ -1,12 +1,18 @@
 import os
 import torch
 from transformers import AutoTokenizer, AutoConfig
-from model_config import VideoChat2Config
-from modeling_videochat2 import InternVideo2_VideoChat2
+
+# 시스템 경로를 추가하여 상위 경로 접근 가능하도록 변경
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(project_root)
+
+from model.sources.model_config import VideoChat2Config
+from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 from decord import VideoReader, cpu
 import torch.nn.functional as F
 import torchvision.transforms as T
-from train.utils.data_utils import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
+from model.utils.data_utils import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 
 
 def model_status(model_path, config):

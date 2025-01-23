@@ -130,10 +130,9 @@ async def translation(caption: str, typ: str) -> str:
 
 def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = "./labels"
+    json_path = os.path.join(current_dir, "data/labels")
     model_path = os.path.join(current_dir)
-    # video_path = os.path.join(current_dir.split('tasks/captioning/InternVideo2-Chat-8B/train'), "demo/data")
-    video_root = "./data/clips"
+    video_root = os.path.join(current_dir, "data/clips")
     inference(json_path, model_path, video_root)
 
 

@@ -227,19 +227,19 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
     return avg_loss
 
 def main():
-    # 상위 디렉토리로 이동하여 필요한 경로 생성
-    # current_dir = os.path.dirname(os.path.abspath(__file__))
-    # base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))  # multi_modality 폴더까지
+    # 현재 경로 설정
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
     # 모델 경로 설정
-    model_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/project/model/weights"
+    model_path = os.path.join(current_dir, "model/weights")
     
     # 비디오 경로 설정
-    video_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/data"
+    video_path = os.path.join(current_dir, "data/YT8M/clips")
     
-    # csv_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/data/internVideo2_dataformat_011725.csv"
-    json_path = ""
+    # 데이터셋 경로 설정
+    json_path = os.path.join(current_dir, "data/YT8M/labels")
+
     train(model_path, video_path)
-    
 
 if __name__ == "__main__":
     main()
