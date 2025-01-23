@@ -46,6 +46,7 @@ class BaseMLLM(PreTrainedModel):
         super().__init__(config)
         self.build_vision_encoder()
         self.build_llm()
+        # LLM build로 self.lm을 추가한 후, Q-former를 build함.
         self.build_bridge()
         self.build_loss()
         # NOTE place it after freeze llm
@@ -72,7 +73,7 @@ class BaseMLLM(PreTrainedModel):
         else:
             self.vision_layernorm = nn.Identity()
 
-        self.freeze_vision_encoder = self.model_config.get("freeze_vision_encoder", False)
+        self.freeze_vision_encoder = self.model_config.get("freeze_vision_encoder", True)
 
         if self.freeze_vision_encoder:
             logger.info("freeze vision encoder")
@@ -107,7 +108,9 @@ class BaseMLLM(PreTrainedModel):
                     torch.zeros(1, self.model_config.bridge.extra_num_query_token, self.query_tokens.shape[-1])
                 )
             
-            self.freeze_bridge = self.model_config.get("freeze_bridge", False)
+            # 01.19, deamin
+            # self.freeze_bridge = self.model_config.get("freeze_bridge", False)
+            self.freeze_bridge = False
             if self.freeze_bridge:
                 logger.info("freeze bridge")
                 freeze_module(self.qformer)
@@ -145,7 +148,7 @@ class BaseMLLM(PreTrainedModel):
             raise NotImplementedError(self.model_config.llm.name)
 
         # 01.18, deamin
-        self.freeze_llm = self.model_config.get("freeze_llm", False) # True->False
+        self.freeze_llm = self.model_config.get("freeze_llm", True) # True->False->True: OOM 문제
         
         logger.info(f'freeze_llm: {self.freeze_llm}')
         if self.freeze_llm:
@@ -188,13 +191,13 @@ class BaseMLLM(PreTrainedModel):
         if self.use_vision_regression_loss:
             self.image_loss_fct = MSELoss()
     
-    # 01.18, deamin
-    def prepare_for_training(self):
+    ## 01.18, deamin
+    def prepare_for_training(self, learning_rate=1e-5, weight_decay=0.01):
         self.train()
         
         # 옵티마이저 설정
         from transformers import AdamW
-        optimizer = AdamW(self.parameters(), lr=1e-5)
+        optimizer = AdamW(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         
         # 스케줄러 설정
         from transformers import get_linear_schedule_with_warmup
@@ -205,7 +208,9 @@ class BaseMLLM(PreTrainedModel):
         )
         
         return optimizer, scheduler
-    
+    ##
+
+
     @property
     def dtype(self):
         return self.lm.dtype
