@@ -1,0 +1,16 @@
+*.mp4
+
+weights/
+*.safetensors
+
+*.json
+
+*.csv
+
+*.model
+
+*.pth
+
+*.pt
+
+*.
