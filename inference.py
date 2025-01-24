@@ -1,12 +1,12 @@
 import os
 import torch
 from transformers import AutoTokenizer, AutoConfig
-from model_config import VideoChat2Config
-from modeling_videochat2 import InternVideo2_VideoChat2
+from model.sources.model_config import VideoChat2Config
+from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 from decord import VideoReader, cpu
 import torch.nn.functional as F
 import torchvision.transforms as T
-from train.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
+from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 from googletrans import Translator
 import asyncio
 import httpx
@@ -23,9 +23,8 @@ def sec_to_time(sec: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 def inference(
-    json_path: str,
+    data_path: str,
     model_path: str,
-    video_root: str,
     test_batch_size: int=1,
     test_num_workers: int=4,
     device: str='cuda' if torch.cuda.is_available() else 'cpu'
@@ -34,9 +33,8 @@ def inference(
     InternVideo2 모델을 활용하여 Inference하는 함수입니다.
     ---------------------------------------------------
     args
-    json_path: JSON형태의 레이블이 있는 경로
+    data_path: 데이터가 있는 경로
     model_path: InternVideo2 모델이 있는 경로
-    video_root: mp4형태의 비디오가 있는 경로
     test_batch_size: Batch Size
     test_num_workers: num_workers 수 설정
     device: cpu 혹은 cuda 등 Inference를 수행할 주체를 설정
@@ -45,7 +43,7 @@ def inference(
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config = VideoChat2Config.from_json_file(
-        os.path.join(current_dir, 'config.json')
+        os.path.join(current_dir, 'model', 'configs', 'config.json')
     )
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -64,8 +62,7 @@ def inference(
     ).to(device)
     
     test_dataset = InternVideo2_VideoChat2_Dataset(
-        json_path=json_path,
-        video_root=video_root,
+        data_path=data_path,
         use_segment=True,
         use_audio=False,
         train=False
@@ -129,11 +126,9 @@ async def translation(caption: str, typ: str) -> str:
     raise RuntimeError(f'Translation Failed for {retries} times')
 
 def main():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(current_dir, "data/labels")
-    model_path = os.path.join(current_dir)
-    video_root = os.path.join(current_dir, "data/clips")
-    inference(json_path, model_path, video_root)
+    data_path = "../../data"
+    model_path = "./model/weights"
+    inference(data_path, model_path)
 
 
 if __name__ == "__main__":
