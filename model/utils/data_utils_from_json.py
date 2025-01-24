@@ -94,8 +94,12 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
     CSV로부터 segment를 불러오고, frame 변환 및 preprocess를 진행하여 Tensor로 반환한다.
     
     Args:
+        ### 대체로 인한 삭제 예정
         json_path: str, JSON 파일 경로
         video_root: str, 동영상 루트 경로(segments 폴더 경로)
+        ### 대체로 인한 추가 예정
+        data_path: str, 데이터 파일 경로
+        ###
         use_segment: bool, 단일 segment 사용 여부
         start_time: int, 시작 시간
         end_time: int, 종료 시간
@@ -113,11 +117,12 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         duration: segment duration, float
         video_path: video path, str
         annotation: video caption, str
+        'start_time' : start_time, str (hh:mm:ss)
+        'end_time' : end_time, str (hh:mm:ss)
     '''
     def __init__(
             self,
-            json_path: str = None,
-            video_root: str = None, # "???/data/clips"
+            data_path: str = "../../data"
             use_segment: bool = True,
             # start_time: int = 0, 현재는 segment_name을 파싱하여 대체 중
             # end_time: int = 0,
@@ -129,9 +134,10 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             train: bool = True,
     ):
         # video
-        assert json_path is not None and isinstance(json_path, str), "json_path must be a string, or not None"
+        assert data_path is not None and isinstance(data_path, str), "data_path must be a string, or not None"
         
         # json 파일 읽기
+        for 
         self.labels: list = [os.path.join(json_path, x) for x in os.listdir(json_path) if x.endswith('.json')]
         self.video_root: str = video_root
         self.use_segment: bool = use_segment
