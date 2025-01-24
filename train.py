@@ -125,12 +125,9 @@ def train(
             ).to(device)
 
             optimizer.zero_grad()
-            #print("--------------------------------")
-            #print(f"batch index: {batch_idx}, frames shape: {frames.shape[0]}")
             # forward 패스 수행
             # 현재는 LLM 출력이 Outputs에 해당하고, LoRA를 건들면 제대로 값이 나오질 않으니, 이대로 갑니다. 
             # 추후 가중치 변경을 잘 끝내면 Q-former에 대한 logit 계산을 위해 validation처럼 text_embeds를 사용하겠습니다. 
-            
             # forward 함수를 호출하면서, attention_mask는 text에 대한 logit을 만들 때 사용함
             outputs, _ = model(
                 input_ids=text_inputs.input_ids,
@@ -157,14 +154,14 @@ def train(
 
             # Cache는 내부에서 사용해서, 지울 수 없음.
 
-            if epoch % validation_interval == 0:
-                print("--------------------------------")
-                print(f"validation start, epoch: {epoch+1}, batch_idx: {batch_idx}")
-                validation(model, test_loader, tokenizer, device, query_embedding_size)
-                print(f"validation end, epoch: {epoch+1}, batch_idx: {batch_idx}")
-                print("--------------------------------")
-                model.train()
-                
+        if epoch % validation_interval == 0:
+            print("--------------------------------")
+            print(f"validation start, epoch: {epoch+1})
+            validation(model, test_loader, tokenizer, device, query_embedding_size)
+            print(f"validation end, epoch: {epoch+1})
+            print("--------------------------------")
+            model.train()
+            
 
 def validation(model, dataloader, tokenizer, device, query_embedding_size):
     model.eval()
