@@ -94,8 +94,12 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
     CSV로부터 segment를 불러오고, frame 변환 및 preprocess를 진행하여 Tensor로 반환한다.
     
     Args:
+        ### 대체로 인한 삭제 예정
         json_path: str, JSON 파일 경로
         video_root: str, 동영상 루트 경로(segments 폴더 경로)
+        ### 대체로 인한 추가 예정
+        data_path: str, 데이터 파일 경로
+        ###
         use_segment: bool, 단일 segment 사용 여부
         start_time: int, 시작 시간
         end_time: int, 종료 시간
@@ -113,11 +117,12 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         duration: segment duration, float
         video_path: video path, str
         annotation: video caption, str
+        'start_time' : start_time, str (hh:mm:ss)
+        'end_time' : end_time, str (hh:mm:ss)
     '''
     def __init__(
             self,
-            json_path: str = None,
-            video_root: str = None, # "???/data/clips"
+            data_path: str = "../../data",
             use_segment: bool = True,
             # start_time: int = 0, 현재는 segment_name을 파싱하여 대체 중
             # end_time: int = 0,
@@ -129,11 +134,9 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             train: bool = True,
     ):
         # video
-        assert json_path is not None and isinstance(json_path, str), "json_path must be a string, or not None"
+        assert data_path is not None and isinstance(data_path, str), "data_path must be a string, or not None"
         
-        # json 파일 읽기
-        self.labels: list = [os.path.join(json_path, x) for x in os.listdir(json_path) if x.endswith('.json')]
-        self.video_root: str = video_root
+        self.labels: list = self.load_label(data_path)
         self.use_segment: bool = use_segment
         self.s3_client: bool = s3_client
         self.train: bool = train
@@ -147,7 +150,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         return len(self.labels)
     
     def __getitem__(self, index):
-        # segment 예시: "'ViDEOPATH'_'STARTTIME(HH_MM_SS)'_'ENDTIME(HH_MM_SS)'"
+        # segment 예시: "'ViDEOPATH'_'SEGMENTINDEX'"
         with open(self.labels[index], 'r', encoding='utf-8') as file:
             data = json.load(file)
         segment_name = list(data.keys())[0]
@@ -156,7 +159,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
 
         
         annotation = data[segment_name]['caption']
-        video_path = os.path.join(self.video_root, ".".join([segment_name, "mp4"]))
+        video_path = self.label_to_video(self.labels[index])
         assert video_path is not None and isinstance(video_path, str), "video_path must be a string, or not None"
         assert annotation is not None and isinstance(annotation, str), "annotation must be a string, or not None"
         
@@ -192,7 +195,66 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         }
         return data
     
-    
+    def label_to_video(self, label: str) -> str:
+        '''
+        label의 경로에 따라 그에 맞는 video의 경로를 반환
+        '''
+        replacements = {'json':'mp4', 'labels':'clips'}
+        video = label # To be transformed
+        for old, new in replacements.items():
+            video = video.replace(old, new)
+        return video
+
+    def load_label(self, data_path: str) -> list:
+        '''
+        data_path 내부에 있는 모든 json형태의 label을 반환
+        '''
+        
+        all_labels = []
+        all_clips = []
+
+        ## dsrc는 데이터 출처를 의미 (예: YT8M, MVAD 등)
+        for dsrc in os.listdir(data_path): 
+            dsrc_path = os.path.join(data_path, dsrc)
+
+            ## category는 데이터의 category를 의미함 (예: movieclips, trailer 등)
+            for category in os.listdir(dsrc_path):
+                category_path = os.path.join(dsrc_path, category)
+
+                ## directory는 반드시 clips 혹은 labels로만 나누어짐
+                for directory in os.listdir(category_path):
+                    directory_path = os.path.join(category_path, directory)
+                        
+                    if directory == 'labels':
+                        sub_labels = [os.path.join(directory_path, x) for x in os.listdir(directory_path) if x.endswith('json')]
+                        all_labels.extend(sub_labels)
+
+                    elif directory == 'clips':
+                        sub_clips = [os.path.join(directory_path, x) for x in os.listdir(directory_path) if x.endswith('mp4')]
+                        all_clips.extend(sub_clips)
+        self.integrity_check(all_labels, all_clips)
+        return all_labels
+
+    def integrity_check(self, labels, clips):
+        '''
+        모든 labels가 clips와 매칭되는 지 확인합니다
+        '''
+        transformed_labels = [self.label_to_video(x) for x in labels]
+        mismatch_no_clips = set(transformed_labels) - set(clips)
+        mismatch_no_labels = set(clips) - set(transformed_labels)
+
+        if len(labels) == 0 and len(clips) == 0:
+            raise RuntimeError(f"No datas found")
+        if len(labels) == 0:
+            raise RuntimeError(f"No labels found")
+        if len(clips) == 0:
+            raise RuntimeError(f"No clips found")
+            
+        if len(mismatch_no_clips) > 0 or len(mismatch_no_labels) > 0:
+            mismatched_samples_clips = [os.path.basename(x) for x in mismatch_no_clips]
+            mismatched_samples_labels = [os.path.basename(x).replace('mp4', 'json') for x in mismatch_no_labels]
+            raise RuntimeError(f"{len(mismatch_no_clips) + len(mismatch_no_labels)} sample(s) mismatched!\n Missing clips: {mismatched_samples_clips}\n Missing labels: {mismatched_samples_labels}")
+
     def preprocess_frames(self, frames, use_albumentations: bool = False):
         '''
         각 프레임을 전처리하는 함수,
@@ -219,7 +281,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             print(f"frames shape: {frames.shape}")
             frames = self.transform(frames)
             frames = frames.view(T, C, 224, 224)  # (T, C, 224, 224)
-  
+
             print(f"Input frames shape: {frames.shape}")
             print(f"Input frames dtype: {frames.dtype}")
             return frames

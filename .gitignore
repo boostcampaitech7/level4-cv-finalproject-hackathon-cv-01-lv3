@@ -16,3 +16,4 @@ weights/
 *.csv
 
 
+*.pyc
