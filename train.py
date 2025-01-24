@@ -12,7 +12,7 @@ from tqdm import tqdm
 def train(
     model_path,
     video_path,
-    csv_path,
+    data_path="../../data",
     num_epochs=50,
     train_batch_size=2,
     test_batch_size=1,
@@ -25,7 +25,7 @@ def train(
 ):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config = VideoChat2Config.from_json_file(
-        os.path.join(current_dir, 'config.json')
+        os.path.join(current_dir,'model','configs', 'config.json')
     )
 
     # 토크나이저 초기화 (Mistral-7B)
@@ -54,16 +54,14 @@ def train(
         )
 
     train_dataset = InternVideo2_VideoChat2_Dataset(
-        csv_path=csv_path,
-        video_root=video_path,
+        data_path=data_path,
         use_segment=True,
         use_audio=False,
         train=True
     )
-    
+
     test_dataset = InternVideo2_VideoChat2_Dataset(
-        csv_path=csv_path,
-        video_root=video_path,
+        data_path=data_path,
         use_segment=True,
         use_audio=False,
         train=False
@@ -156,9 +154,9 @@ def train(
 
         if epoch % validation_interval == 0:
             print("--------------------------------")
-            print(f"validation start, epoch: {epoch+1})
+            print(f"validation start, epoch: {epoch+1}")
             validation(model, test_loader, tokenizer, device, query_embedding_size)
-            print(f"validation end, epoch: {epoch+1})
+            print(f"validation end, epoch: {epoch+1}")
             print("--------------------------------")
             model.train()
             
@@ -231,10 +229,7 @@ def main():
     model_path = os.path.join(current_dir, "model/weights")
     
     # 비디오 경로 설정
-    video_path = os.path.join(current_dir, "data/YT8M/clips")
-    
-    # 데이터셋 경로 설정
-    json_path = os.path.join(current_dir, "data/YT8M/labels")
+    video_path = os.path.join(current_dir, "../../data")
 
     train(model_path, video_path)
 
