@@ -86,8 +86,8 @@ def inference(
         outputs = model.chat(
             tokenizer=tokenizer,
             msg='',
-            user_prompt="Describe the video in one sentence",
-            instruction="Carefully watch the video and describe what is happening in detail.",
+            user_prompt='Describe the video in detail.',
+            instruction="Carefully watch the video and pay attention to the cause and sequence of events, the detail and movement of objects, and the action and pose of persons.",
             media_type='video',
             media_tensor=frames,
             chat_history=[],

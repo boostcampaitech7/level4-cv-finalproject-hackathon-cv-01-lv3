@@ -45,6 +45,9 @@ def split_video_into_scenes(video_path : str, threshold:float = 27.0, output_jso
     )
     print(f"비디오 세그먼트 저장 완료: {segments_dir}")
     total_scenes = len(scene_list)
+    if not total_scenes:
+        print(f"{video_id} 에서 발생한 세그먼트가 없습니다.")
+        return
     digit_count = max(3, math.floor(math.log10(total_scenes)) + 1)
 
     for idx, scene in enumerate(scene_list):
