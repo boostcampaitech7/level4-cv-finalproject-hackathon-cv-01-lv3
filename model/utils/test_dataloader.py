@@ -1,6 +1,6 @@
 import os
 import torch
-from utils.data_utils import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
+from .data_utils import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 
 def test_dataset_and_loader(
     csv_path: str = None,
@@ -68,16 +68,12 @@ def test_dataset_and_loader(
 
 if __name__ == "__main__":
     # 테스트 설정
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     
     # 상위 디렉토리로 이동하여 필요한 경로 생성
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))  # multi_modality 폴더까지
-    video_path = os.path.join(base_dir, "demo", "data")
-    csv_path = os.path.join(base_dir, "demo", "data", "internVideo2_dataformat_011725.csv")
-    
-    # 또는 하드코딩된 경로 사용
-    # csv_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/data/internVideo2_dataformat_011725.csv"
-    
+    video_path = os.path.join(current_dir, "data/clips")
+    csv_path = os.path.join(current_dir, "data/labels")
+
     test_dataset_and_loader(
         csv_path=csv_path,
         video_root=video_path,

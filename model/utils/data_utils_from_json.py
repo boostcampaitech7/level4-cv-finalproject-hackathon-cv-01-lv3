@@ -10,7 +10,7 @@ import json
 
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from av_utils import load_full_audio_av
+from .av_utils import load_full_audio_av
 
 # 01.18, deamin
 def read_frames_cv2(

@@ -9,9 +9,14 @@ from torch.nn import MSELoss
 
 from torch.cuda.amp import autocast as autocast
 
-from .modeling_internvideo2_vit import pretrain_internvideo2_giant_patch14_224_clean
-from .modeling_qformer import build_qformer
-from .model_config import VideoChat2Config
+# 시스템 경로를 추가하여 상위 경로 접근 가능하도록 변경
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(project_root)
+
+from model.utils.modeling_internvideo2_vit import pretrain_internvideo2_giant_patch14_224_clean
+from model.utils.modeling_qformer import build_qformer
+from model.sources.model_config import VideoChat2Config
 
 logger = logging.getLogger(__name__)
 

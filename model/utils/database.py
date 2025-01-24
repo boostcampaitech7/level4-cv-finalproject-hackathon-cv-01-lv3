@@ -1,8 +1,8 @@
 import os
 import torch
 from transformers import AutoTokenizer, AutoConfig
-from model_config import VideoChat2Config
-from modeling_videochat2 import InternVideo2_VideoChat2
+from ..sources.model_config import VideoChat2Config
+from ..sources.modeling_videochat2 import InternVideo2_VideoChat2
 import torch.nn.functional as F
 from elasticsearch import Elasticsearch
 import pandas as pd

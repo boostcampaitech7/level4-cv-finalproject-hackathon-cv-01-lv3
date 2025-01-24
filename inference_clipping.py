@@ -1,12 +1,12 @@
 import os
 import torch
 from transformers import AutoTokenizer, AutoConfig
-from model_config import VideoChat2Config
-from modeling_videochat2 import InternVideo2_VideoChat2
+from model.sources.model_config import VideoChat2Config
+from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 from decord import VideoReader, cpu
 import torch.nn.functional as F
 import torchvision.transforms as T
-from train.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
+from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 from googletrans import Translator
 import asyncio
 import httpx
@@ -131,10 +131,11 @@ async def translation(caption: str, typ: str) -> str:
 
 def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(current_dir)
-    video_path = "/data/ephemeral/home/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/tasks/captioning/video/video1.mp4"#"./demo/data/example1.mp4"
-    json_path = "./demo/labels"
-    seg_dir = "./demo/clips" 
+    model_path = os.path.join(current_dir, "model/weights")
+    video_path = os.path.join(current_dir, "data/YT8M/clips/YT8M_001.mp4")
+    json_path = os.path.join(current_dir, "data/YT8M/labels/YT8M_001.json")
+    seg_dir = os.path.join(current_dir, "data/YT8M/clips")
+
     # 1. video clipping 
     split_video_into_scenes(video_path = video_path ,threshold= 27.0, output_json_dir = json_path, segments_dir = seg_dir )
     # video_root = "./data/clips" # video -> segment_root 변경 (01.22.hong)

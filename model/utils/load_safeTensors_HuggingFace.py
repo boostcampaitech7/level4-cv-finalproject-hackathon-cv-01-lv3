@@ -39,7 +39,7 @@ def main():
         ]
 
     # 파일 이름 입력
-    file_name = [
+    file_name_list = [
         "model-00001-of-00004.safetensors",
         "model-00002-of-00004.safetensors",
         "model-00003-of-00004.safetensors",
@@ -48,15 +48,24 @@ def main():
         "tokenizer.json",
         "tokenizer.model",
         "tokenizer.model.v3",
-        "tokenizer_config.json",
-        "config.json",
+        "tokenizer_config.json"
         ]
 
     # 현재 파일의 디렉토리 경로를 가져옵니다
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    os.makedirs(current_dir, exist_ok=True)
+    current_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    weights_path = os.path.join(current_dir, "weights")
+    os.makedirs(weights_path, exist_ok=True)
 
-    download_model(model_name, file_name, current_dir)
+    download_model(model_name, file_name_list, weights_path)
+
+    file_name_json = [
+        "config.json",
+        ]
+
+    config_path = os.path.join(current_dir, "configs")
+    os.makedirs(config_path, exist_ok=True)
+
+    download_model(model_name, file_name_json, config_path)
 
 if __name__ == "__main__":
     main()

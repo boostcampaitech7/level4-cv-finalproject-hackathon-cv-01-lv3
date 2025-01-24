@@ -10,10 +10,12 @@ from PIL import Image
 import numpy as np
 
 class VideoCaption:
-    def __init__(self, model_path):
+    def __init__(self, current_dir):
         # 설정 로드
-        self.config = VideoChat2Config.from_json_file("/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/project/model/configs/config.json")
-        
+        self.config = VideoChat2Config.from_json_file(os.path.join(current_dir, "model/configs/config.json"))
+
+        model_path = os.path.join(current_dir, "model/weights")
+    
         # 토크나이저 초기화 (Mistral-7B)
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model_config.llm.pretrained_llm_path,
@@ -30,7 +32,7 @@ class VideoCaption:
                 torch_dtype=torch.bfloat16,
                 trust_remote_code=True
             ).cuda()
-            
+ 
         else:
             self.model = InternVideo2_VideoChat2.from_pretrained(
                 model_path,
@@ -132,17 +134,15 @@ class VideoCaption:
 
 def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 모델 경로 설정
-    model_path = os.path.join(current_dir, 'model/weights')
-    
+
     # VideoCaption 인스턴스 생성
-    captioner = VideoCaption(model_path)
+    captioner = VideoCaption(current_dir)
     
     # 비디오 경로 설정
     media_path = os.path.join(current_dir, 'data', "본인이 원하는 비디오 경로")
     
     # 캡션 생성
-    caption = captioner.generate_caption(media_path, media_type='image')
+    caption = captioner.generate_caption(media_path, media_type='video')
     print("Generated Caption:", caption)
 
 if __name__ == "__main__":

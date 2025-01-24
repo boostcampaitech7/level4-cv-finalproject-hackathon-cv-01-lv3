@@ -13,4 +13,6 @@ weights/
 
 *.pt
 
-*.
+*.csv
+
+data/

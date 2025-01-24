@@ -125,12 +125,9 @@ def train(
             ).to(device)
 
             optimizer.zero_grad()
-            #print("--------------------------------")
-            #print(f"batch index: {batch_idx}, frames shape: {frames.shape[0]}")
             # forward 패스 수행
             # 현재는 LLM 출력이 Outputs에 해당하고, LoRA를 건들면 제대로 값이 나오질 않으니, 이대로 갑니다. 
             # 추후 가중치 변경을 잘 끝내면 Q-former에 대한 logit 계산을 위해 validation처럼 text_embeds를 사용하겠습니다. 
-            
             # forward 함수를 호출하면서, attention_mask는 text에 대한 logit을 만들 때 사용함
             outputs, _ = model(
                 input_ids=text_inputs.input_ids,
@@ -157,14 +154,14 @@ def train(
 
             # Cache는 내부에서 사용해서, 지울 수 없음.
 
-            if epoch % validation_interval == 0:
-                print("--------------------------------")
-                print(f"validation start, epoch: {epoch+1}, batch_idx: {batch_idx}")
-                validation(model, test_loader, tokenizer, device, query_embedding_size)
-                print(f"validation end, epoch: {epoch+1}, batch_idx: {batch_idx}")
-                print("--------------------------------")
-                model.train()
-                
+        if epoch % validation_interval == 0:
+            print("--------------------------------")
+            print(f"validation start, epoch: {epoch+1})
+            validation(model, test_loader, tokenizer, device, query_embedding_size)
+            print(f"validation end, epoch: {epoch+1})
+            print("--------------------------------")
+            model.train()
+            
 
 def validation(model, dataloader, tokenizer, device, query_embedding_size):
     model.eval()
@@ -227,19 +224,19 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
     return avg_loss
 
 def main():
-    # 상위 디렉토리로 이동하여 필요한 경로 생성
-    # current_dir = os.path.dirname(os.path.abspath(__file__))
-    # base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))  # multi_modality 폴더까지
+    # 현재 경로 설정
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
     # 모델 경로 설정
-    model_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/project/model/weights"
+    model_path = os.path.join(current_dir, "model/weights")
     
     # 비디오 경로 설정
-    video_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/data"
+    video_path = os.path.join(current_dir, "data/YT8M/clips")
     
-    # csv_path = "/data/ephemeral/home/deamin/project/level4-cv-finalproject-hackathon-cv-01-lv3/InternVideo-main/InternVideo-main/InternVideo2/multi_modality/demo/data/internVideo2_dataformat_011725.csv"
-    json_path = ""
+    # 데이터셋 경로 설정
+    json_path = os.path.join(current_dir, "data/YT8M/labels")
+
     train(model_path, video_path)
-    
 
 if __name__ == "__main__":
     main()
