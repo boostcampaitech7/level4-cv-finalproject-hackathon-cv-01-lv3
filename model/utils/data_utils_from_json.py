@@ -211,6 +211,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         '''
         
         all_labels = []
+        all_clips = []
 
         ## dsrc는 데이터 출처를 의미 (예: YT8M, MVAD 등)
         for dsrc in os.listdir(data_path): 
@@ -227,7 +228,32 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
                     if directory == 'labels':
                         sub_labels = [os.path.join(directory_path, x) for x in os.listdir(directory_path) if x.endswith('json')]
                         all_labels.extend(sub_labels)
+
+                    elif directory == 'clips':
+                        sub_clips = [os.path.join(directory_path, x) for x in os.listdir(directory_path) if x.endswith('mp4')]
+                        all_clips.extend(sub_clips)
+        self.integrity_check(all_labels, all_clips)
         return all_labels
+
+    def integrity_check(self, labels, clips):
+        '''
+        모든 labels가 clips와 매칭되는 지 확인합니다
+        '''
+        transformed_labels = [self.label_to_video(x) for x in labels]
+        mismatch_no_clips = set(transformed_labels) - set(clips)
+        mismatch_no_labels = set(clips) - set(transformed_labels)
+
+        if len(labels) == 0 and len(clips) == 0:
+            raise RuntimeError(f"No datas found")
+        if len(labels) == 0:
+            raise RuntimeError(f"No labels found")
+        if len(clips) == 0:
+            raise RuntimeError(f"No clips found")
+            
+        if len(mismatch_no_clips) > 0 or len(mismatch_no_labels) > 0:
+            mismatched_samples_clips = [os.path.basename(x) for x in mismatch_no_clips]
+            mismatched_samples_labels = [os.path.basename(x).replace('mp4', 'json') for x in mismatch_no_labels]
+            raise RuntimeError(f"{len(mismatch_no_clips) + len(mismatch_no_labels)} sample(s) mismatched!\n Missing clips: {mismatched_samples_clips}\n Missing labels: {mismatched_samples_labels}")
 
     def preprocess_frames(self, frames, use_albumentations: bool = False):
         '''
@@ -255,7 +281,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             print(f"frames shape: {frames.shape}")
             frames = self.transform(frames)
             frames = frames.view(T, C, 224, 224)  # (T, C, 224, 224)
-  
+
             print(f"Input frames shape: {frames.shape}")
             print(f"Input frames dtype: {frames.dtype}")
             return frames
