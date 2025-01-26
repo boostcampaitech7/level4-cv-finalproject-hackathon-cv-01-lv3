@@ -11,6 +11,7 @@ from googletrans import Translator
 import asyncio
 import httpx
 import pandas as pd
+from translate import translation
 
 def sec_to_time(sec: int) -> str:
     """
@@ -99,31 +100,6 @@ def inference(
     submission.to_csv(f"v2t_submission.csv", index=False)
     
 
-async def translation(caption: str, typ: str) -> str:
-    """
-    번역을 수행하는 함수
-    주의 사항: 이 함수는 asynchronous하게 작동합니다
-    --------------------
-    args
-    caption: 번역할 문장 또는 단어
-    typ: 번역할 문장의 언어 (한국어로 입력 받을 시 ko, 영어로 입력 받을 시 en으로 설정)
-
-    출력: 번역된 문장 또는 단어 (str)
-    """
-    translator = Translator()
-    if typ == 'ko':
-        src, dest = 'ko', 'en'
-    if typ == 'en':
-        src, dest = 'en', 'ko'
-    retries = 5  
-    for attempt in range(retries):
-        try:
-            res = await translator.translate(caption, src=src, dest=dest)
-            return res.text
-        except httpx.ConnectTimeout:
-            print(f"Connection timeout occurred. Retry {attempt + 1} of {retries}...")
-            await asyncio.sleep(2)  # 대기 후 재시도
-    raise RuntimeError(f'Translation Failed for {retries} times')
 
 def main():
     data_path = "../../data"
