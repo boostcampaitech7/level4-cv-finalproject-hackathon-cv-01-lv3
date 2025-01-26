@@ -12,77 +12,8 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from .av_utils import load_full_audio_av
 
-# 01.18, deamin
-def read_frames_cv2(
-    video_path: str = None,
-    use_segment: bool = True,
-    start_time: int = 0,
-    end_time: int = 0,
-    s3_client: bool = False,
-    # fps: float = 1, # 현재는 동영상 fps를 기준으로 샘플링, 추후 fps를 변경할 때 추가, 
-    # sampling: str = 'static', # static, dynamic, dynamic algorithm 토의 후 추가
-):
-    '''
-    단일 segment 대해 frame을 제공하는 함수, 전체 video는 추가 중
-    Video를 받아서 프레임을 tensor로 반환한다.
-    
-    Args: 
-        video_path: str, 동영상 경로
-        use_segment: bool, 단일 segment 사용 여부
-        start_time: int, 시작 시간
-        end_time: int, 종료 시간
-        s3_client: bool, s3 클라이언트 사용 여부
-    
-    Returns:
-        frames: torch.Tensor, 동영상 프레임 텐서, (T, C, H, W), torch.uint8
-    '''
-    
-    # 동영상 읽기 실패 시 예외 처리 포함, s3와 local 경로 제공
-    try:
-        if not s3_client:
-            video = cv2.VideoCapture(video_path)
-            video_fps: float = video.get(cv2.CAP_PROP_FPS)
-        else:
-            video = cv2.VideoCapture(io.BytesIO(s3_client.get(video_path)))
-            video_fps: float = video.get(cv2.CAP_PROP_FPS)
-    except Exception as e:
-        raise Exception(f"Failed to read video, error: {e}")
-    
-    frames = []
-    if not video.isOpened() or video.get(cv2.CAP_PROP_FRAME_COUNT) == 0:
-        raise Exception(f"Failed to open video: {video_path}")
-    else:
-        print(f"Successfully opened video: {video_path}")
-    
-    # 단일 segment -> else (01.18, deamin)
-    if not use_segment:
-        frame_indices: list[int, int] = [start_time * video_fps, end_time * video_fps] # [start_time, end_time]
-    else:
-        # 전체 frame 사용
-        frame_indices: list[int, int] = [0, int(video.get(cv2.CAP_PROP_FRAME_COUNT))]
-
-    video.set(cv2.CAP_PROP_POS_FRAMES, frame_indices[0])
-    print(f"frame_indices: {frame_indices}")
-    
-    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = video.get(cv2.CAP_PROP_FPS)
-    
-    print(f"total_frames: {total_frames}, fps: {fps}")
-
-    # segment에 해당하는 frame만 추가
-    for idx in range(frame_indices[0], 8):#frame_indices[1]):    
-        ret, frame = video.read()
-        if not ret:
-            raise Exception(f"Failed to read frame: {idx}")
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frames.append(frame)
-        # print(f"success processing frame idx: {idx} frames")
-    video.release()
-    
-    # (T, H, W, C) to (T, C, H, W), numpy to tensor, dtype=torch.uint8
-    frames = torch.tensor(np.stack(frames), dtype=torch.uint8).permute(0, 3, 1, 2)
-    return frames, frame_indices, int(total_frames/fps)
-
+import numpy as np
+from sampling import read_frames_cv2
 # 01.18, deamin
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -91,15 +22,10 @@ import albumentations as A
 class InternVideo2_VideoChat2_Dataset(Dataset): 
     '''
     InternVideo2_VideoChat2_Dataset 클래스
-    CSV로부터 segment를 불러오고, frame 변환 및 preprocess를 진행하여 Tensor로 반환한다.
+    segment를 불러오고, frame 변환 및 preprocess를 진행하여 Tensor로 반환한다.
     
     Args:
-        ### 대체로 인한 삭제 예정
-        json_path: str, JSON 파일 경로
-        video_root: str, 동영상 루트 경로(segments 폴더 경로)
-        ### 대체로 인한 추가 예정
         data_path: str, 데이터 파일 경로
-        ###
         use_segment: bool, 단일 segment 사용 여부
         start_time: int, 시작 시간
         end_time: int, 종료 시간
@@ -107,6 +33,8 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         use_audio: bool, 오디오 사용 여부
         audio_reader_type: str, 오디오 로더 타입
         train: bool, 학습 여부
+        num_frames: int, 등간격으로 몇 개의 프레임을 추출하여 모델에 넣어줄 지 결정
+        save_frames_as_img: bool, 샘플링되는 프레임 저장 여부
     
     Returns:
         frames: pre-processed frames of a one segment, (T, C, H, W), torch.uint8
@@ -132,6 +60,8 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             audio_sample_rate: int = 16000,
             max_audio_length: int = 1000000,
             train: bool = True,
+            num_frames: int = 8,
+            save_frames_as_img: bool = False,
     ):
         # video
         assert data_path is not None and isinstance(data_path, str), "data_path must be a string, or not None"
@@ -144,6 +74,8 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         self.audio_reader_type: str = audio_reader_type
         self.audio_sample_rate: int = audio_sample_rate
         self.max_audio_length: int = max_audio_length
+        self.num_frames: int = num_frames
+        self.save_frames_as_img: bool = save_frames_as_img
         
     def __len__(self):
         # json형태의 annotations가 각 segment마다 하나씩 존재하므로, json파일의 개수를 반환하면 됨
@@ -172,7 +104,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         
         # 동영상 읽기
         frames, frame_indices, duration = read_frames_cv2(
-            video_path, self.use_segment, start_time, end_time, self.s3_client)
+            video_path, self.use_segment, start_time, end_time, self.s3_client, num_frames = self.num_frames, save_frames_as_img = self.save_frames_as_img)
         
         # audio, segment이므로 full audio 사용
         if self.use_audio:
@@ -249,7 +181,6 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             raise RuntimeError(f"No labels found")
         if len(clips) == 0:
             raise RuntimeError(f"No clips found")
-            
         if len(mismatch_no_clips) > 0 or len(mismatch_no_labels) > 0:
             mismatched_samples_clips = [os.path.basename(x) for x in mismatch_no_clips]
             mismatched_samples_labels = [os.path.basename(x).replace('mp4', 'json') for x in mismatch_no_labels]
@@ -278,12 +209,12 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             # 전체 프레임에 대해 한 번에 resize 적용
             T, C, H, W = frames.shape
             frames = frames.contiguous().view(-1, C, H, W)  # (T * C, H, W)
-            print(f"frames shape: {frames.shape}")
+            # print(f"frames shape: {frames.shape}")
             frames = self.transform(frames)
             frames = frames.view(T, C, 224, 224)  # (T, C, 224, 224)
 
-            print(f"Input frames shape: {frames.shape}")
-            print(f"Input frames dtype: {frames.dtype}")
+            # print(f"Input frames shape: {frames.shape}")
+            # print(f"Input frames dtype: {frames.dtype}")
             return frames
         
         except Exception as e:
