@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from .av_utils import load_full_audio_av
 
 import numpy as np
-from sampling import *
+from sampling import read_frames_cv2
 # 01.18, deamin
 from torch.utils.data import Dataset
 from torchvision import transforms

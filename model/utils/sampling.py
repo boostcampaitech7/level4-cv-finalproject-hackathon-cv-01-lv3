@@ -23,10 +23,13 @@ def extract_keyframes(video_path: str, num_frames:int=8) -> list:
         ret, frame = video.read()
         if not ret:
             break
+        # 프레임 간 픽셀 값이 얼마나 유사한지 파악하기 위해 grayscale로 변환 후, 차이 계산
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = np.asarray(gray, dtype=np.uint8)
         if prev_frame is not None:
+            # 이전 프레임과 현재 프레임 간 픽셀 값 차이를 grayscale 기준으로 계산
             diff = cv2.absdiff(gray, prev_frame)
+            # 픽셀 값 차이를 더하여 보관 (한 개의 스칼라 값이 됨)
             frame_diffs.append((i, diff.sum()))
         prev_frame = gray
 
