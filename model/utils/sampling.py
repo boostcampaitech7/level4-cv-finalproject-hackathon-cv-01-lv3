@@ -101,7 +101,7 @@ def read_frames_cv2(
     # print(f"total_frames: {total_frames}, fps: {fps}")
 
     # segment에 해당하는 frame만 추가
-    for idx in np.linspace(frame_indices[0], frame_indices[1]-1, num_frames).astype(int):#frame_indices[1]): # 등간격
+    for idx in sorted(list(set(np.linspace(frame_indices[0], frame_indices[1]-1, num_frames).astype(int)))):#frame_indices[1]): # 등간격
         video.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = video.read()
         if not ret:
