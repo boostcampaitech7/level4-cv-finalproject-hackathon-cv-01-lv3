@@ -15,5 +15,5 @@ weights/
 
 *.csv
 
-
+*.png
 *.pyc
