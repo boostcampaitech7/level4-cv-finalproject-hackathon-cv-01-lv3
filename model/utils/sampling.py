@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import torch
+import os
 
 def extract_keyframes(video_path: str, num_frames:int=8) -> list:
     '''
