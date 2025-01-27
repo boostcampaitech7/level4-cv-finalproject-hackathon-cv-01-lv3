@@ -65,7 +65,9 @@ def inference(
         data_path=data_path,
         use_segment=True,
         use_audio=False,
-        train=False
+        train=False,
+        num_frames=8,
+        save_frames_as_img=False
     )
     
     test_loader = InternVideo2_VideoChat2_DataLoader(
@@ -96,7 +98,7 @@ def inference(
         )
         new_row = pd.DataFrame([{'segment_name': batch['segment_names'][0], 'start_time': sec_to_time(batch['start_times'][0]), 'end_time': sec_to_time(batch['end_times'][0]), 'caption': outputs[0].strip(), 'caption_ko': asyncio.run(translation(outputs[0], 'en'))}])
         submission = pd.concat([submission, new_row], ignore_index=True)
-    submission.to_csv(f"v2t_submission.csv", index=False)
+    submission.to_csv(f"v2t_submission.csv", index=False, encoding='utf-8')
     
 
 async def translation(caption: str, typ: str) -> str:

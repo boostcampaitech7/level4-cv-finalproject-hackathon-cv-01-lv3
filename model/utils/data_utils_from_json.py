@@ -146,23 +146,23 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         all_clips = []
 
         ## dsrc는 데이터 출처를 의미 (예: YT8M, MVAD 등)
-        for dsrc in os.listdir(data_path): 
+        for dsrc in sorted(os.listdir(data_path)): 
             dsrc_path = os.path.join(data_path, dsrc)
 
             ## category는 데이터의 category를 의미함 (예: movieclips, trailer 등)
-            for category in os.listdir(dsrc_path):
+            for category in sorted(os.listdir(dsrc_path)):
                 category_path = os.path.join(dsrc_path, category)
 
                 ## directory는 반드시 clips 혹은 labels로만 나누어짐
-                for directory in os.listdir(category_path):
+                for directory in sorted(os.listdir(category_path)):
                     directory_path = os.path.join(category_path, directory)
                         
                     if directory == 'labels':
-                        sub_labels = [os.path.join(directory_path, x) for x in os.listdir(directory_path) if x.endswith('json')]
+                        sub_labels = [os.path.join(directory_path, x) for x in sorted(os.listdir(directory_path)) if x.endswith('json')]
                         all_labels.extend(sub_labels)
 
                     elif directory == 'clips':
-                        sub_clips = [os.path.join(directory_path, x) for x in os.listdir(directory_path) if x.endswith('mp4')]
+                        sub_clips = [os.path.join(directory_path, x) for x in sorted(os.listdir(directory_path)) if x.endswith('mp4')]
                         all_clips.extend(sub_clips)
         self.integrity_check(all_labels, all_clips)
         return all_labels

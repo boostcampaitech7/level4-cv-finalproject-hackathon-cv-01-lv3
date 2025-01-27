@@ -61,6 +61,7 @@ def main():
     # json_dir: 라벨 저장할 경로 (디렉토리)
     # seg_dir: 장면 저장할 경로 (디렉토리)
 
+    data_dir = "../../data"
     video_dir = os.path.join(current_dir,"../../data/YT8M/movieclips/origin")
     json_dir = os.path.join(current_dir,"../../data/YT8M/movieclips/labels")
     seg_dir = os.path.join(current_dir,"../../data/YT8M/movieclips/clips")
@@ -78,7 +79,7 @@ def main():
 
     
     # 2. seg captioning & translate
-    inference(json_dir, model_path, seg_dir)#video_root
+    inference(data_dir, model_path)#video_root
 
 
 if __name__ == "__main__":
