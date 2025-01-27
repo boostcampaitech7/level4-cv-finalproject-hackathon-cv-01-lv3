@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 from tqdm import tqdm
+import transformers
 
 def train(
     model_path,
@@ -35,7 +36,7 @@ def train(
         use_fast=False,
         token=os.getenv('HF_TOKEN')
     )
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    tokenizer.add_special_tokens({'pad_token': '<unk>'})
 
     # 모델 초기화
     if torch.cuda.is_available():
@@ -114,13 +115,15 @@ def train(
                 annotations = batch['annotations']
             
             # 텍스트 토큰화
+            print(f"[Debug train]: Tokenizer를 forward 합니다")
             text_inputs = tokenizer(
                 annotations,
-                padding='longest',
+                padding='max_length',
                 truncation=True,
-                max_length=256,
+                max_length=96,
                 return_tensors="pt"
             ).to(device)
+            print(f"[Debug train]: Tokenizer를 실행하여 text_inputs를 생성하였습니다: {text_inputs}")
 
             optimizer.zero_grad()
             # forward 패스 수행
@@ -152,13 +155,13 @@ def train(
 
             # Cache는 내부에서 사용해서, 지울 수 없음.
 
-        if epoch % validation_interval == 0:
-            print("--------------------------------")
-            print(f"validation start, epoch: {epoch+1}")
-            validation(model, test_loader, tokenizer, device, query_embedding_size)
-            print(f"validation end, epoch: {epoch+1}")
-            print("--------------------------------")
-            model.train()
+            # if epoch % validation_interval == 0:
+            #     print("--------------------------------")
+            #     print(f"validation start, epoch: {epoch+1}")
+            #     validation(model, test_loader, tokenizer, device, query_embedding_size)
+            #     print(f"validation end, epoch: {epoch+1}")
+            #     print("--------------------------------")
+            #     model.train()
             
 
 def validation(model, dataloader, tokenizer, device, query_embedding_size):
@@ -171,21 +174,21 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
             frames = batch['frames'].to(device)
             annotations = batch['annotations']
             
-            text_inputs = tokenizer(
-                annotations,
-                padding='longest',
-                truncation=True,
-                max_length=256,
-                return_tensors="pt"
-            ).to(device)
+            # text_inputs = tokenizer(
+            #     annotations,
+            #     padding='max_length',
+            #     truncation=True,
+            #     max_length=96,
+            #     return_tensors="pt"
+            # ).to(device)
             
-            _, text_embeds = model(
-                input_ids=text_inputs.input_ids,
-                attention_mask=text_inputs.attention_mask,
-                video=frames,
-                labels=text_inputs.input_ids,
-                video_idx=torch.ones(frames.shape[0], query_embedding_size).to(device)
-            )
+            # outputs, _ = model(
+            #     input_ids=text_inputs.input_ids,
+            #     attention_mask=text_inputs.attention_mask,
+            #     video=frames,
+            #     labels=text_inputs.input_ids,
+            #     video_idx=torch.ones(frames.shape[0], query_embedding_size).to(device)
+            # )
             
             #print(f"sucess extract text_embeds from vision encoder and q-former")
 

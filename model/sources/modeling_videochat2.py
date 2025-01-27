@@ -49,11 +49,12 @@ class InternVideo2_VideoChat2(BaseMLLM):
         video_idx = None,
         image_idx = None,
     ):  
+        print(f"[Debug model-forward] 52줄까지 실행됨")
         if self.use_vision_regression_loss:
             text_embeds, visual, visual_idx = self.pad_text_embeds(input_ids=input_ids, image=image,video=video, return_visual=True, video_idx=video_idx, image_idx=image_idx, instruction = instruction)
         else:
             text_embeds = self.pad_text_embeds(input_ids=input_ids, image=image, video=video, return_visual=False, video_idx=video_idx, image_idx=image_idx,  instruction = instruction)
-        
+        print(f"[Debug model-forward] 57줄까지 실행됨")
         # Transformer.AutoModelForCausalLM.from_config을 통해 정의한 'Mistral-7B' 모델을 사용함.
         """
         outputs = self.lm(
@@ -74,7 +75,6 @@ class InternVideo2_VideoChat2(BaseMLLM):
             output_hidden_states=True,
             return_dict=True,
         )
-
         return outputs, text_embeds
 
     def pad_text_embeds(
@@ -87,11 +87,17 @@ class InternVideo2_VideoChat2(BaseMLLM):
         return_visual: bool = False,
         instruction = None,
     ):
+        print(f"[Debug: pad_text_embeds] 91줄까지 실행됨. 이후 {type(self.lm)}의 get_input_embeddings 호출 예정")
         # text_embeds shape: [batch_size, seq_len, hidden_dim], [2, 150, 4096]
+        print(f"[Debug] input_ids.long().shape: {input_ids.long().shape}")
+        input_ids = torch.where(input_ids == 32768, 0, input_ids) # padding에 해당하는 값을 32768에서 0~32767 값의 범위 내로 맞춰줘야 함
+        print(f"[Debug] input_ids.max:,{input_ids.max()}, {input_ids.min()}")
+        print(f"[Debug] input_ids:,{input_ids}")
+        print(f"[Debug] self.lm.get_input_embeddings().weight.size(0): {self.lm.get_input_embeddings().weight.size(0)}")  # vocab_size 확인
         text_embeds = self.lm.get_input_embeddings()(input_ids.long()).detach()
-        #print(f"[Debug] Text Embeddings Shape: {text_embeds.shape}")  # [batch_size, seq_len, hidden_dim]
-        #print(f"[Debug] Input IDs Shape: {input_ids.shape}")  # [batch_size, seq_len]
-
+        print(f"[Debug] Text Embeddings Shape: {text_embeds.shape}")  # [batch_size, seq_len, hidden_dim]
+        print(f"[Debug] Input IDs Shape: {input_ids.shape}")  # [batch_size, seq_len]
+        print(f"[Debug: pad_text_embeds] 96줄까지 실행됨")
         visual = None
         visual_idx = None
 
@@ -103,14 +109,14 @@ class InternVideo2_VideoChat2(BaseMLLM):
             #print(f"[Debug] Permuted Image Shape: {image.shape}")
             
             prompt_image_embeds = self.encode_vision(image, instruction=instruction)
-            #print(f"[Debug] Vision Encoder Output Shape: {prompt_image_embeds.shape}")
+            # print(f"[Debug] Vision Encoder Output Shape: {prompt_image_embeds.shape}")
             
             visual = prompt_image_embeds
             prompt_image_embeds = self.project_up(prompt_image_embeds)
-            #print(f"[Debug] After Project Up Shape: {prompt_image_embeds.shape}")
+            # print(f"[Debug] After Project Up Shape: {prompt_image_embeds.shape}")
             
             prompt_image_embeds = prompt_image_embeds.view(-1, prompt_image_embeds.shape[-1])
-            #print(f"[Debug] Reshaped Image Embeds Shape: {prompt_image_embeds.shape}")
+            # print(f"[Debug] Reshaped Image Embeds Shape: {prompt_image_embeds.shape}")
             
             #print(f"[Debug] Image Index Shape: {image_idx.shape}")
             #print(f"[Debug] Number of Image Tokens: {(image_idx == 1).sum()}")
@@ -126,20 +132,20 @@ class InternVideo2_VideoChat2(BaseMLLM):
             #print(f"[Debug] Original Video Shape: [B={B}, N={N}, T={T}, C={C}, H={H}, W={W}]")
             
             video = video.reshape(B*N, T, C, H, W).permute(0, 2, 1, 3, 4)
-            #print(f"[Debug] Reshaped Video Shape: {video.shape}")
+            print(f"[Debug] Reshaped Video Shape: {video.shape}")
             
             prompt_video_embeds = self.encode_vision(video, instruction=instruction)
-            #print(f"[Debug] Vision Encoder Output Shape: {prompt_video_embeds.shape}")
+            print(f"[Debug] Vision Encoder Output Shape: {prompt_video_embeds.shape}")
             
             visual = prompt_video_embeds
             prompt_video_embeds = self.project_up(prompt_video_embeds)
-            #print(f"[Debug] After Project Up Shape: {prompt_video_embeds.shape}")
+            print(f"[Debug] After Project Up Shape: {prompt_video_embeds.shape}")
             
             prompt_video_embeds = prompt_video_embeds.view(-1, prompt_video_embeds.shape[-1])
-            #print(f"[Debug] Reshaped Video Embeds Shape: {prompt_video_embeds.shape}")
+            print(f"[Debug] Reshaped Video Embeds Shape: {prompt_video_embeds.shape}")
             
-            #print(f"[Debug] Video Index Shape: {video_idx.shape}")
-            #print(f"[Debug] Number of Video Tokens: {(video_idx == 1).sum()}")
+            print(f"[Debug] Video Index Shape: {video_idx.shape}")
+            print(f"[Debug] Number of Video Tokens: {(video_idx == 1).sum()}")
             # visual_idx = video_idx
             # text_embeds[video_idx == 1] = text_embeds[video_idx == 1] * 0 + prompt_video_embeds.to(text_embeds.device).to(text_embeds.dtype)
             # video_idx를 text_embeds와 같은 sequence length로 패딩
@@ -147,6 +153,7 @@ class InternVideo2_VideoChat2(BaseMLLM):
             #print(f"[Debug] Batch Size: {B}")
             #print(f"[Debug] Sequence Length: {seq_length}")
             padded_video_idx = torch.zeros(B, seq_length).to(video_idx.device)
+            print(f"[Debug] padded_video_idx.shape: {padded_video_idx.shape}")
             padded_video_idx[:, :video_idx.shape[1]] = video_idx  # 처음 96개 위치에 원래 video_idx 복사
             
             # 이제 패딩된 인덱스로 마스킹
