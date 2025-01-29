@@ -10,19 +10,39 @@ from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, In
 from tqdm import tqdm
 
 def train(
-    model_path,
-    video_path,
-    data_path="../../data",
-    num_epochs=50,
-    train_batch_size=2,
-    test_batch_size=1,
-    train_num_workers=4,
-    test_num_workers=4,
-    learning_rate=1e-4,
-    weight_decay=1e-2,
-    validation_interval=25,
-    device='cuda'
+    model_path: str,
+    video_path: str,
+    data_path: str = "../../data",
+    num_epochs: int = 50,
+    train_batch_size: int = 2,
+    test_batch_size: int = 1,
+    train_num_workers: int = 4,
+    test_num_workers: int = 4,
+    learning_rate: float = 1e-4,
+    weight_decay: float = 1e-2,
+    validation_interval: int = 25,
+    device: str = None
 ):
+    """
+    모델을 학습시키는 함수, 일정 주기로 validation을 수행함.
+
+    Args: 
+        model_path: 모델 경로
+        video_path: 비디오 경로
+        data_path: 데이터 경로
+        num_epochs: 학습 주기
+        train_batch_size: 학습 배치 크기
+        test_batch_size: 검증 배치 크기
+        train_num_workers: 학습 데이터 로더 스레드 수
+        test_num_workers: 검증 데이터 로더 스레드 수
+        learning_rate: 학습률
+        weight_decay: 가중치 감쇠 비율
+        validation_interval: 검증 주기
+        device: CPU or GPU
+    """
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config = VideoChat2Config.from_json_file(
         os.path.join(current_dir,'model','configs', 'config.json')
@@ -90,28 +110,14 @@ def train(
         weight_decay=weight_decay
     )
 
-    from rouge_score import rouge_scorer
-    rouge = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
-
     query_embedding_size = model.query_tokens.shape[1] + model.extra_query_tokens.shape[1]
-    # video_index = torch.ones(train_batch_size, query_embedding_size).to(device)
-
-    # 학습 도중에 Text와 Video의 각 embedding vector를 합치는 과정이 있습니다.
-    # 현재 알고리즘은, video_index 크기를 text embedding vector보다 작게 유지시켜야 합니다.
-    # (내부 알고리즘에서 video_index를 text에 맞춤)
-    # 따라서 추후 논의 전까지, raise 검증문을 하나 추가합니다.
-    if train_batch_size * query_embedding_size > 300:
-        raise ValueError("upper bound of Video index is 300, video_index=train_batch_size*query_embedding_size")
 
     for epoch in range(num_epochs):
         train_loop = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
         for batch_idx, batch in enumerate(train_loop):
-            if torch.cuda.is_available():
-                frames = batch['frames'].to(device)
-                annotations = batch['annotations']  # 텍스트 데이터는 그대로 유지
-            else:
-                frames = batch['frames']
-                annotations = batch['annotations']
+
+            frames = batch['frames'].to(device)
+            annotations = batch['annotations']
             
             # 텍스트 토큰화
             text_inputs = tokenizer(
@@ -123,10 +129,6 @@ def train(
             ).to(device)
 
             optimizer.zero_grad()
-            # forward 패스 수행
-            # 현재는 LLM 출력이 Outputs에 해당하고, LoRA를 건들면 제대로 값이 나오질 않으니, 이대로 갑니다. 
-            # 추후 가중치 변경을 잘 끝내면 Q-former에 대한 logit 계산을 위해 validation처럼 text_embeds를 사용하겠습니다. 
-            # forward 함수를 호출하면서, attention_mask는 text에 대한 logit을 만들 때 사용함
             outputs, _ = model(
                 input_ids=text_inputs.input_ids,
                 attention_mask=text_inputs.attention_mask,
@@ -140,17 +142,9 @@ def train(
             optimizer.step()
             scheduler.step()
 
-            # print(f"outputs: {outputs[0]}")
-            # tqdm description 업데이트하여 loss 표시
             train_loop.set_postfix(loss=f'{loss.item():.4f}, batch_idx: {batch_idx}')
             
-            del frames
-            del annotations
-            del text_inputs
-            del outputs
-            del loss
-
-            # Cache는 내부에서 사용해서, 지울 수 없음.
+            del frames, annotations, text_inputs, outputs, loss
 
         if epoch % validation_interval == 0:
             print("--------------------------------")
@@ -164,7 +158,6 @@ def train(
 def validation(model, dataloader, tokenizer, device, query_embedding_size):
     model.eval()
     total_loss = 0
-    # validation loop에도 tqdm 적용
     val_loop = tqdm(dataloader, desc='Validation')
     with torch.no_grad():
         for batch in val_loop:
@@ -179,28 +172,25 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
                 return_tensors="pt"
             ).to(device)
             
-            _, text_embeds = model(
-                input_ids=text_inputs.input_ids,
-                attention_mask=text_inputs.attention_mask,
-                video=frames,
-                labels=text_inputs.input_ids,
-                video_idx=torch.ones(frames.shape[0], query_embedding_size).to(device)
-            )
+            # _, text_embeds = model(
+            #     input_ids=text_inputs.input_ids,
+            #     attention_mask=text_inputs.attention_mask,
+            #     video=frames,
+            #     labels=text_inputs.input_ids,
+            #     video_idx=torch.ones(frames.shape[0], query_embedding_size).to(device)
+            # )
             
-            #print(f"sucess extract text_embeds from vision encoder and q-former")
-
             generation_config = {
                 'num_beams': 1,            # 빔 서치 크기
                 'max_new_tokens': 200,     # 최대 생성 길이
                 'do_sample': False,         # 샘플링 사용
-                'top_p': 0.9,
-                'top_k': None,
-                'temperature': 1.0,
-                'length_penalty': 1,
-                'repetition_penalty': 1.0
+                'top_p': 0.9,               # 샘플링 확률
+                'top_k': None,              # 샘플링 확률
+                'temperature': 1.0,          # 샘플링 온도
+                'length_penalty': 1,         # 길이 패널티
+                'repetition_penalty': 1.0    # 반복 패널티
             }
 
-            # generate를 사용하기에는 decoding에 관한 이해가 전혀 없어 pass. 다시 chat 기반으로 수정함.
             # 캡션 생성
             response, _ = model.chat(
                 tokenizer=tokenizer,
@@ -218,7 +208,6 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
             print(f"Annotation: {batch['annotations']}")
 
     avg_loss = total_loss / len(dataloader)
-    #print(f"Validation Loss: {avg_loss}")
     return avg_loss
 
 def main():
