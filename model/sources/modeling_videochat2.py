@@ -69,17 +69,6 @@ class InternVideo2_VideoChat2(BaseMLLM):
             text_embeds, visual, visual_idx = self.pad_text_embeds(input_ids=input_ids, image=image,video=video, return_visual=True, video_idx=video_idx, image_idx=image_idx, instruction = instruction)
         else:
             text_embeds = self.pad_text_embeds(input_ids=input_ids, image=image, video=video, return_visual=False, video_idx=video_idx, image_idx=image_idx,  instruction = instruction)
-        
-        print(f"[Debug] attention_mask shape: {attention_mask.shape}")
-        attention_mask = self.pad_to_size(attention_mask, 1, 150)
-        print(f"[Debug] attention_mask shape: {attention_mask.shape}")
-        
-        # labels도 같은 크기로 패딩 (보통 -100으로 패딩)
-        if labels is not None:
-            print(f"[Debug] labels shape: {labels.shape}")
-            labels = self.pad_to_size(labels, 1, 150, pad_value=-100)
-            print(f"[Debug] labels shape: {labels.shape}")
-        
 
         outputs = self.lm(
             inputs_embeds=text_embeds,
@@ -133,12 +122,9 @@ class InternVideo2_VideoChat2(BaseMLLM):
         """
         text token과 video token을 하나의 vector로 align 진행
         """
+        self.lm.resize_token_embeddings(input_ids.max() + 1) 
         text_embeds = self.lm.get_input_embeddings()(input_ids.long()).detach()
-        print(f"[Debug] Text Embeddings Shape: {text_embeds.shape}")  # [batch_size, seq_len, hidden_dim]
 
-        # 텍스트 토큰 패딩
-        text_embeds = self.pad_to_size(text_embeds, 1, 150)
-        print(f"[Debug] Text Embeddings Shape: {text_embeds.shape}")  # [batch_size, seq_len, hidden_dim]
         visual = None
         visual_idx = None
 
@@ -276,7 +262,6 @@ class InternVideo2_VideoChat2(BaseMLLM):
             outputs: (B, T)
         """
         text_embeds = self.pad_text_embeds(input_ids=input_ids, image=image, video=video, image_idx=image_idx, video_idx=video_idx)
-        attention_mask = self.pad_to_size(attention_mask, 1, 150)
         outputs = self.lm.generate(
             inputs_embeds=text_embeds,
             attention_mask=attention_mask,
@@ -359,10 +344,6 @@ class InternVideo2_VideoChat2(BaseMLLM):
       generation_config={}
     ):
         input_ids, attention_masks, labels = [], [], []
-
-        ##
-        tokenizer.add_special_tokens({'pad_token': '[PAD]'}) 
-        ##
 
         conversation = ""
         if instruction:

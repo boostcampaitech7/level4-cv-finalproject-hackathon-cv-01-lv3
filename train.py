@@ -122,7 +122,7 @@ def train(
             # 텍스트 토큰화
             text_inputs = tokenizer(
                 annotations,
-                padding='longest',
+                padding='max_length',
                 truncation=True,
                 max_length=256,
                 return_tensors="pt"
@@ -184,8 +184,8 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
                 'num_beams': 1,            # 빔 서치 크기
                 'max_new_tokens': 200,     # 최대 생성 길이
                 'do_sample': False,         # 샘플링 사용
-                'top_p': 0.9,               # 샘플링 확률
-                'top_k': None,              # 샘플링 확률
+                'top_p': 0.9,               # 샘플링 확률(probabilistic)
+                'top_k': None,              # 샘플링 확률(greedy)
                 'temperature': 1.0,          # 샘플링 온도
                 'length_penalty': 1,         # 길이 패널티
                 'repetition_penalty': 1.0    # 반복 패널티

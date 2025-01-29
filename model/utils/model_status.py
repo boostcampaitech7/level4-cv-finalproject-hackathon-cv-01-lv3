@@ -12,7 +12,7 @@ from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 from decord import VideoReader, cpu
 import torch.nn.functional as F
 import torchvision.transforms as T
-from model.utils.data_utils import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
+# from model.utils.data_utils import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 
 
 def model_status(model_path, config):
@@ -81,9 +81,9 @@ def model_status(model_path, config):
     return model
 
 def main():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    config = VideoChat2Config.from_json_file(os.path.join(current_dir, 'config.json'))
-    model = model_status(current_dir, config)
+    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config = VideoChat2Config.from_json_file(os.path.join(current_dir, 'configs/', 'config.json'))
+    model = model_status(os.path.join(current_dir, 'weights/'), config)
     return model
 
 if __name__ == "__main__":
