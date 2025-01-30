@@ -84,7 +84,7 @@ def train(
         dataset=train_dataset,
         batch_size=train_batch_size,
         num_workers=train_num_workers,
-        shuffle=False,
+        shuffle=True,
         pin_memory=True,
         use_audio=False
     )
