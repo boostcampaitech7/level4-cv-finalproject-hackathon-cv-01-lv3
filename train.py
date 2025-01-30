@@ -143,7 +143,7 @@ def train(
             print("--------------------------------")
             print(f"validation start, epoch: {epoch+1}")
             validation(model, test_loader, tokenizer, device, query_embedding_size)
-            # 모델 저장 방식: (임시) 마지막 Checkpoint
+            # 모델 저장 방식: (임시) 마지막 Checkpoint를 기준으로 1개만 저장되도록 유지됨
             save_model(model, optimizer=optimizer, epoch=epoch, loss=None, save_path=os.path.join('temp_model', 'best_model.pt'))
             print(f"validation end, epoch: {epoch+1}")
             print("--------------------------------")
@@ -238,6 +238,7 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
             print(f"response: {response}")
 
     avg_score = total_score / len(dataloader)
+    # 만약, BERTScore 등의 평가 메트릭을 사용하여 추가로 total_score를 건드리지 않는다면 avg_score는 계속 0으로 나오는 것이 정상임
     print(F"avg_score: {avg_score}")
     return avg_score
 
