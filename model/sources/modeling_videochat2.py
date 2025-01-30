@@ -120,7 +120,6 @@ class InternVideo2_VideoChat2(BaseMLLM):
         """
         text token과 video token을 하나의 vector로 align 진행
         """
-        self.lm.resize_token_embeddings(input_ids.max() + 1) 
         self.lm.resize_token_embeddings(self.config.pad_token_id + 1)
         text_embeds = self.lm.get_input_embeddings()(input_ids.long()).detach()
 
@@ -159,7 +158,7 @@ class InternVideo2_VideoChat2(BaseMLLM):
 
             padded_video_idx[:, :video_idx.shape[1]] = video_idx
             
-            # 입력으로 받은 text_embedds에 video_idx에 vision encoder 결과를 더함.
+            # 입력으로 받은 text_embeds에 video_idx에 vision encoder 결과를 더함.
             # text_embeds에서 padding_video_idx == 1 은 원래 video_idx == 1 인 것이므로, 
             # 해당 위치에 *0을 해주면서 원래 있던 값을 0으로 만들어주고, Vision encoder 결과를 더해줌.
             text_embeds[padded_video_idx == 1] = text_embeds[padded_video_idx == 1] * 0 + prompt_video_embeds.to(text_embeds.device).to(text_embeds.dtype)
