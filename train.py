@@ -226,7 +226,7 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size, log_f
                 annotations,
                 padding='max_length',
                 truncation=True,
-                max_length=96,
+                max_length=256,
                 return_tensors="pt"
             ).to(device)
             
