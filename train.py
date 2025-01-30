@@ -14,7 +14,7 @@ from tqdm import tqdm
 def train(
     model_path: str,
     data_path: str = "../../data",
-    num_epochs: int = 10,
+    num_epochs: int = 50,
     train_batch_size: int = 2,
     test_batch_size: int = 1,
     train_num_workers: int = 4,
