@@ -8,27 +8,27 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 from tqdm import tqdm
+# BERTScore 계산을 위함 (사용 시, pip install bert_score 이후, 아래 1줄 주석 해제)
+# from bert_score import score
 
 def train(
     model_path: str,
-    video_path: str,
     data_path: str = "../../data",
-    num_epochs: int = 50,
+    num_epochs: int = 10,
     train_batch_size: int = 2,
     test_batch_size: int = 1,
     train_num_workers: int = 4,
     test_num_workers: int = 4,
     learning_rate: float = 1e-4,
     weight_decay: float = 1e-2,
-    validation_interval: int = 25,
-    device: str = None
+    validation_interval: int = 5,
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
 ):
     """
     모델을 학습시키는 함수, 일정 주기로 validation을 수행함.
 
     Args: 
         model_path: 모델 경로
-        video_path: 비디오 경로
         data_path: 데이터 경로
         num_epochs: 학습 주기
         train_batch_size: 학습 배치 크기
@@ -40,8 +40,6 @@ def train(
         validation_interval: 검증 주기
         device: CPU or GPU
     """
-    if device is None:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config = VideoChat2Config.from_json_file(
@@ -58,20 +56,15 @@ def train(
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
     # 모델 초기화
-    if torch.cuda.is_available():
-        model = InternVideo2_VideoChat2.from_pretrained(
-            model_path,
-            config=config,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True
-        ).to(device)
-    else:
-        model = InternVideo2_VideoChat2.from_pretrained(
-            model_path,
-            config=config,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True
-        )
+    model = InternVideo2_VideoChat2.from_pretrained(
+        model_path,
+        config=config,
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True
+    ).to(device)
+
+    # 모델 내부적으로 Attention, Loss, Output 출력 등에서 pad_token이 불필요한 영향을 주지 않도록 설정
+    model.config.pad_token_id = tokenizer.pad_token_id
 
     train_dataset = InternVideo2_VideoChat2_Dataset(
         data_path=data_path,
@@ -150,28 +143,64 @@ def train(
             print("--------------------------------")
             print(f"validation start, epoch: {epoch+1}")
             validation(model, test_loader, tokenizer, device, query_embedding_size)
+            # 모델 저장 방식: (임시) 마지막 Checkpoint
+            save_model(model, optimizer=optimizer, epoch=epoch, loss=None, save_path=os.path.join('temp_model', 'best_model.pt'))
             print(f"validation end, epoch: {epoch+1}")
             print("--------------------------------")
             model.train()
             
+def save_model(model, optimizer=None, scheduler=None, epoch=None, loss=None, save_path="best_model.pt"):
+    """
+    모델의 파라미터와 함께, optimizer, scheduler, epoch, loss를 저장하는 함수입니다
+
+    Args:
+        model (torch.nn.Module): The model to save.
+        optimizer (torch.optim.Optimizer, optional): Optimizer state to save. Default is None.
+        scheduler (torch.optim.lr_scheduler, optional): Scheduler state to save. Default is None.
+        epoch (int, optional): Current epoch. Default is None.
+        loss (float, optional): Best validation loss. Default is None.
+        save_path (str, optional): File path to save the model. Default is "best_model.pt".
+    """
+    # Ensure the save directory exists
+    save_dir = os.path.dirname(save_path)
+    if not os.path.exists(save_dir) and save_dir != "":
+        os.makedirs(save_dir)
+    
+    # Prepare the state dictionary
+    state = {
+        'model_state_dict': model.state_dict(),
+    }
+    if optimizer:
+        state['optimizer_state_dict'] = optimizer.state_dict()
+    if scheduler:
+        state['scheduler_state_dict'] = scheduler.state_dict()
+    if epoch is not None:
+        state['epoch'] = epoch
+    if loss is not None:
+        state['best_loss'] = loss
+    
+    # Save the state dictionary
+    torch.save(state, save_path)
+    print(f"Model saved to {save_path}")
 
 def validation(model, dataloader, tokenizer, device, query_embedding_size):
     model.eval()
-    total_loss = 0
+    total_score = 0
     val_loop = tqdm(dataloader, desc='Validation')
     with torch.no_grad():
         for batch in val_loop:
             frames = batch['frames'].to(device)
             annotations = batch['annotations']
             
-            text_inputs = tokenizer(
-                annotations,
-                padding='longest',
-                truncation=True,
-                max_length=256,
-                return_tensors="pt"
-            ).to(device)
-            
+            # 이후 평가 메트릭 도입하여 모델 저장 필요
+            # text_inputs = tokenizer(
+            #     annotations,
+            #     padding='longest',
+            #     truncation=True,
+            #     max_length=256,
+            #     return_tensors="pt"
+            # ).to(device)
+
             # _, text_embeds = model(
             #     input_ids=text_inputs.input_ids,
             #     attention_mask=text_inputs.attention_mask,
@@ -203,12 +232,14 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
                 return_history=True,
                 generation_config=generation_config
             )
-            
-            print(f"Validation Output: {response}")
-            print(f"Annotation: {batch['annotations']}")
+            # BERTScore을 활용하여 GT와 Prediction 비교. 사용시 아래 2줄 주석 해제 (필요 시, Baseline 평가 Metric으로 활용)
+            # P, R, F1 = score([response], [batch['annotations']], lang="en")
+            # total_score += F1[0]
+            print(f"response: {response}")
 
-    avg_loss = total_loss / len(dataloader)
-    return avg_loss
+    avg_score = total_score / len(dataloader)
+    print(F"avg_score: {avg_score}")
+    return avg_score
 
 def main():
     # 현재 경로 설정

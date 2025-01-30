@@ -82,8 +82,6 @@ def read_frames_cv2(
     frames = []
     if not video.isOpened() or video.get(cv2.CAP_PROP_FRAME_COUNT) == 0:
         raise Exception(f"Failed to open video: {video_path}")
-    else:
-        print(f"Successfully opened video: {video_path}")
     
     # 단일 segment -> else (01.18, deamin)
     if not use_segment:
