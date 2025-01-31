@@ -325,7 +325,6 @@ def main():
     
     # 모델 경로 설정
     model_path = os.path.join(current_dir, "model/weights")
-    model_path = '/data/ephemeral/home/hongjoo/level4-cv-finalproject-hackathon-cv-01-lv3/model/weights'
     
     # 비디오 경로 설정
     video_path = os.path.join(current_dir, "../../data")
