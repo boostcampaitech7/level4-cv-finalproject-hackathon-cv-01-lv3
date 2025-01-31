@@ -17,3 +17,5 @@ weights/
 
 *.png
 *.pyc
+
+wandb/
