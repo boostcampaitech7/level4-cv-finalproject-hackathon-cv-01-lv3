@@ -205,12 +205,12 @@ def train(
             print("--------------------------------")
             print(f"validation start, epoch: {epoch+1}")
             # 모델 저장 방식: (임시) 마지막 Checkpoint를 기준으로 1개만 저장되도록 유지됨
-            val_loss = validation(model, test_loader, tokenizer, device, query_embedding_size)
+            val_score = validation(model, test_loader, tokenizer, device, query_embedding_size)
             
             # validation 결과 로깅 
             wandb.log({
                 "epoch": epoch,
-                "validation_loss": val_loss
+                "validation_score": val_score
             })
             
             save_model(model, optimizer=optimizer, epoch=epoch, loss=None, save_path=os.path.join('temp_model', 'best_model.pt'))
@@ -219,7 +219,7 @@ def train(
             model.train()
 
             with open(log_file, 'a') as f:
-                f.write(f"Validation - Epoch {epoch}: Loss = {val_loss:.4f}\n")
+                f.write(f"Validation - Epoch {epoch}: Score = {val_score:.4f}\n")
                 f.write("-" * 50 + "\n")
 
     wandb.finish()
@@ -308,8 +308,8 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
                 generation_config=generation_config
             )
             # BERTScore을 활용하여 GT와 Prediction 비교. 사용시 아래 2줄 주석 해제 (필요 시, Baseline 평가 Metric으로 활용)
-            # P, R, F1 = score([response], [batch['annotations']], lang="en")
-            # total_score += F1[0]
+            P, R, F1 = score([response], [batch['annotations']], lang="en")
+            total_score += F1[0]
             print(f"response: {response}")
 
     avg_score = total_score / len(dataloader)
