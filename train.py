@@ -10,6 +10,9 @@ from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, In
 from tqdm import tqdm
 # BERTScore 계산을 위함 (사용 시, pip install bert_score 이후, 아래 1줄 주석 해제)
 # from bert_score import score
+import wandb
+import json
+from datetime import datetime
 
 def train(
     model_path: str,
@@ -40,6 +43,37 @@ def train(
         validation_interval: 검증 주기
         device: CPU or GPU
     """
+
+    # 로깅을 위한 디렉토리 생성
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.path.join(current_dir, 'logs', datetime.now().strftime('%Y%m%d_%H%M%S'))
+    os.makedirs(log_dir, exist_ok=True)
+
+    # 기본 설정 로깅
+    config = {
+        "model_path": model_path,
+        "data_path": data_path,
+        "num_epochs": num_epochs,
+        "train_batch_size": train_batch_size,
+        "test_batch_size": test_batch_size,
+        "learning_rate": learning_rate,
+        "weight_decay": weight_decay,
+        "device": device,
+        "system": {
+            "pytorch_version": torch.__version__,
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None"
+        }
+    }
+    
+    with open(os.path.join(log_dir, 'config.json'), 'w') as f:
+        json.dump(config, f, indent=4)
+
+    # wandb 초기화
+    wandb.init(
+        project="videochat2-training",
+        config=config
+    )
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config = VideoChat2Config.from_json_file(
@@ -105,8 +139,24 @@ def train(
 
     query_embedding_size = model.query_tokens.shape[1] + model.extra_query_tokens.shape[1]
 
+    # 모델 정보 로깅
+    model_info = {
+        "total_params": sum(p.numel() for p in model.parameters()),
+        "trainable_params": sum(p.numel() for p in model.parameters() if p.requires_grad),
+        "model_structure": str(model)
+    }
+    
+    with open(os.path.join(log_dir, 'model_info.json'), 'w') as f:
+        json.dump(model_info, f, indent=4)
+
+    # 학습 로그 파일 생성
+    log_file = os.path.join(log_dir, 'training.log')
+    with open(log_file, 'w') as f:
+        f.write(f"Training started at {datetime.now()}\n")
+
     for epoch in range(num_epochs):
         train_loop = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+        epoch_loss = 0.0
         for batch_idx, batch in enumerate(train_loop):
 
             frames = batch['frames'].to(device)
@@ -131,6 +181,7 @@ def train(
             )
 
             loss = outputs.loss
+            epoch_loss += loss.item()
             loss.backward()
             optimizer.step()
             scheduler.step()
@@ -139,16 +190,40 @@ def train(
             
             del frames, annotations, text_inputs, outputs, loss
 
+            # 에폭 정보 로깅
+            with open(log_file, 'a') as f:
+                f.write(f"Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}\n")
+
+        # 에폭별 평균 손실 로깅
+        avg_epoch_loss = epoch_loss / len(train_loader)
+        wandb.log({
+            "epoch": epoch,
+            "epoch_loss": avg_epoch_loss
+        })
+
         if epoch % validation_interval == 0:
             print("--------------------------------")
             print(f"validation start, epoch: {epoch+1}")
-            validation(model, test_loader, tokenizer, device, query_embedding_size)
             # 모델 저장 방식: (임시) 마지막 Checkpoint를 기준으로 1개만 저장되도록 유지됨
+            val_loss = validation(model, test_loader, tokenizer, device, query_embedding_size)
+            
+            # validation 결과 로깅 
+            wandb.log({
+                "epoch": epoch,
+                "validation_loss": val_loss
+            })
+            
             save_model(model, optimizer=optimizer, epoch=epoch, loss=None, save_path=os.path.join('temp_model', 'best_model.pt'))
             print(f"validation end, epoch: {epoch+1}")
             print("--------------------------------")
             model.train()
-            
+
+            with open(log_file, 'a') as f:
+                f.write(f"Validation - Epoch {epoch}: Loss = {val_loss:.4f}\n")
+                f.write("-" * 50 + "\n")
+
+    wandb.finish()
+
 def save_model(model, optimizer=None, scheduler=None, epoch=None, loss=None, save_path="best_model.pt"):
     """
     모델의 파라미터와 함께, optimizer, scheduler, epoch, loss를 저장하는 함수입니다
@@ -243,11 +318,14 @@ def validation(model, dataloader, tokenizer, device, query_embedding_size):
     return avg_score
 
 def main():
-    # 현재 경로 설정
+    # wandb 로그인
+    wandb.login()
+    
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # 모델 경로 설정
     model_path = os.path.join(current_dir, "model/weights")
+    model_path = '/data/ephemeral/home/hongjoo/level4-cv-finalproject-hackathon-cv-01-lv3/model/weights'
     
     # 비디오 경로 설정
     video_path = os.path.join(current_dir, "../../data")
