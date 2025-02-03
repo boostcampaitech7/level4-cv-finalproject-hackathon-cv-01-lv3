@@ -9,7 +9,7 @@ import torchvision.transforms as T
 from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
 from tqdm import tqdm
 # BERTScore 계산을 위함 (사용 시, pip install bert_score 이후, 아래 1줄 주석 해제)
-# from bert_score import score
+from bert_score import score
 import wandb
 import json
 from datetime import datetime
@@ -154,11 +154,13 @@ def train(
     with open(log_file, 'w') as f:
         f.write(f"Training started at {datetime.now()}\n")
 
+    # 베스트 스코어 추적 변수 추가
+    best_val_score = -float('inf')
+    
     for epoch in range(num_epochs):
         train_loop = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
         epoch_loss = 0.0
         for batch_idx, batch in enumerate(train_loop):
-
             frames = batch['frames'].to(device)
             annotations = batch['annotations']
             
@@ -188,11 +190,12 @@ def train(
 
             train_loop.set_postfix(loss=f'{loss.item():.4f}, batch_idx: {batch_idx}')
             
-            del frames, annotations, text_inputs, outputs, loss
-
-            # 에폭 정보 로깅
+            # 로깅을 먼저 수행 후 변수 삭제
             with open(log_file, 'a') as f:
                 f.write(f"Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}\n")
+
+            # 메모리 해제
+            del frames, annotations, text_inputs, outputs, loss
 
         # 에폭별 평균 손실 로깅
         avg_epoch_loss = epoch_loss / len(train_loader)
@@ -204,8 +207,19 @@ def train(
         if epoch % validation_interval == 0:
             print("--------------------------------")
             print(f"validation start, epoch: {epoch+1}")
-            # 모델 저장 방식: (임시) 마지막 Checkpoint를 기준으로 1개만 저장되도록 유지됨
             val_score = validation(model, test_loader, tokenizer, device, query_embedding_size)
+            
+            # 베스트 스코어 갱신 시 모델 저장
+            if val_score > best_val_score:
+                best_val_score = val_score
+                save_model(
+                    model, 
+                    optimizer=optimizer, 
+                    epoch=epoch,
+                    val_score=val_score,  # 새 파라미터 추가
+                    save_path=os.path.join('temp_model', 'best_model.pt')
+                )
+                print(f"🔥 New best model saved with score: {val_score:.4f}")
             
             # validation 결과 로깅 
             wandb.log({
@@ -213,7 +227,6 @@ def train(
                 "validation_score": val_score
             })
             
-            save_model(model, optimizer=optimizer, epoch=epoch, loss=None, save_path=os.path.join('temp_model', 'best_model.pt'))
             print(f"validation end, epoch: {epoch+1}")
             print("--------------------------------")
             model.train()
@@ -224,7 +237,15 @@ def train(
 
     wandb.finish()
 
-def save_model(model, optimizer=None, scheduler=None, epoch=None, loss=None, save_path="best_model.pt"):
+def save_model(
+    model, 
+    optimizer=None, 
+    scheduler=None, 
+    epoch=None, 
+    val_score=None,  # 새 파라미터 추가
+    loss=None, 
+    save_path="best_model.pt"
+):
     """
     모델의 파라미터와 함께, optimizer, scheduler, epoch, loss를 저장하는 함수입니다
 
@@ -244,6 +265,7 @@ def save_model(model, optimizer=None, scheduler=None, epoch=None, loss=None, sav
     # Prepare the state dictionary
     state = {
         'model_state_dict': model.state_dict(),
+        'best_val_score': val_score,  # 검증 점수 저장
     }
     if optimizer:
         state['optimizer_state_dict'] = optimizer.state_dict()
@@ -256,7 +278,7 @@ def save_model(model, optimizer=None, scheduler=None, epoch=None, loss=None, sav
     
     # Save the state dictionary
     torch.save(state, save_path)
-    print(f"Model saved to {save_path}")
+    print(f"Model saved to {save_path} | Best Score: {val_score:.4f}")
 
 def validation(model, dataloader, tokenizer, device, query_embedding_size):
     model.eval()

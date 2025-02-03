@@ -103,7 +103,7 @@ def read_frames_cv2(
         video.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = video.read()
         if not ret:
-            raise Exception(f"Failed to read frame: {idx}")
+            raise Exception(f"Failed to read frame: {idx}, Error video path: {video_path}")
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frames.append(frame)
         # 이미지로 저장 (디버깅용 추가: 25.01.25)
