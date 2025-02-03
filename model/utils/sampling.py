@@ -46,7 +46,7 @@ def read_frames_cv2(
     start_time: int = 0,
     end_time: int = 0,
     s3_client: bool = False,
-    num_frames: int = 8,
+    num_frames: int = 16,
     save_frames_as_img: bool = False,
     # fps: float = 1, # 현재는 동영상 fps를 기준으로 샘플링, 추후 fps를 변경할 때 추가, 
     # sampling: str = 'static', # static, dynamic, dynamic algorithm 토의 후 추가
