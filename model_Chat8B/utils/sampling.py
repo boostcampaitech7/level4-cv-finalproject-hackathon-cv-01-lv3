@@ -265,6 +265,7 @@ def load_video(video_path, num_segments=8, return_msg=False, resolution=224, hd_
 
     frames = torch.cat([sub_img, glb_img])
 
+    print(f"returning frames from load_video: {frames.shape}")
 
     if return_msg:
         fps = float(vr.get_avg_fps())

@@ -9,14 +9,19 @@ from torch.nn import MSELoss
 
 from torch.cuda.amp import autocast as autocast
 
-from .modeling_internvideo2_vit import pretrain_internvideo2_giant_patch14_224_clean
-from .modeling_qformer import build_qformer
+# 시스템 경로를 추가하여 상위 경로 접근 가능하도록 변경
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(project_root)
+
+from model.sources.modeling_internvideo2_vit import pretrain_internvideo2_giant_patch14_224_clean
+from model.sources.modeling_qformer import build_qformer
+from model.sources.model_config import VideoChat2Config
 
 logger = logging.getLogger(__name__)
 
 from transformers import LlamaTokenizer,AutoTokenizer,AutoModel,AutoModelForCausalLM,AutoProcessor
 from transformers import AutoConfig, PreTrainedModel
-from .model_config import VideoChat2Config
 
 try:
     token = os.environ['HF_TOKEN']
@@ -38,19 +43,15 @@ def freeze_module(module):
     return module
 
 
-class LLMConfig(AutoConfig):
-    model_type = ""
-
-
 class BaseMLLM(PreTrainedModel):
     config_class = VideoChat2Config
     def __init__(self, config):
-        # super().__init__(config)
         self.model_config = config.model_config
         config.model_config = None
         super().__init__(config)
         self.build_vision_encoder()
         self.build_llm()
+        # LLM build로 self.lm을 추가한 후, Q-former를 build함.
         self.build_bridge()
         self.build_loss()
         # NOTE place it after freeze llm
@@ -77,7 +78,7 @@ class BaseMLLM(PreTrainedModel):
         else:
             self.vision_layernorm = nn.Identity()
 
-        self.freeze_vision_encoder = self.model_config.get("freeze_vision_encoder", False)
+        self.freeze_vision_encoder = self.model_config.get("freeze_vision_encoder", True)
 
         if self.freeze_vision_encoder:
             logger.info("freeze vision encoder")
@@ -112,7 +113,9 @@ class BaseMLLM(PreTrainedModel):
                     torch.zeros(1, self.model_config.bridge.extra_num_query_token, self.query_tokens.shape[-1])
                 )
             
-            self.freeze_bridge = self.model_config.get("freeze_bridge", False)
+            # 01.19, deamin
+            # self.freeze_bridge = self.model_config.get("freeze_bridge", False)
+            self.freeze_bridge = False
             if self.freeze_bridge:
                 logger.info("freeze bridge")
                 freeze_module(self.qformer)
@@ -149,11 +152,19 @@ class BaseMLLM(PreTrainedModel):
         else:
             raise NotImplementedError(self.model_config.llm.name)
 
-        self.freeze_llm = self.model_config.get("freeze_llm", True)
+        # 01.18, deamin
+        self.freeze_llm = self.model_config.get("freeze_llm", True) # True->False->True: OOM 문제
+        
         logger.info(f'freeze_llm: {self.freeze_llm}')
         if self.freeze_llm:
             logger.info("freeze llm")
             freeze_module(self.lm)
+            
+        # 01.18, deamin
+        # 학습설정 추가
+        elif not self.freeze_llm:
+            self.lm.gradient_checkpointing_enable()  # 메모리 효율을 위한 설정
+            self.lm.enable_input_require_grads()
         
         if self.model_config.llm.use_lora:
             self.use_lora = True
@@ -184,7 +195,27 @@ class BaseMLLM(PreTrainedModel):
         self.use_vision_regression_loss = self.model_config.loss.get("use_vision_regression_loss", False)
         if self.use_vision_regression_loss:
             self.image_loss_fct = MSELoss()
+    
+    ## 01.18, deamin
+    def prepare_for_training(self, learning_rate=1e-5, weight_decay=0.01):
+        self.train()
         
+        # 옵티마이저 설정
+        from transformers import AdamW
+        optimizer = AdamW(self.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        
+        # 스케줄러 설정
+        from transformers import get_linear_schedule_with_warmup
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=100,
+            num_training_steps=1000
+        )
+        
+        return optimizer, scheduler
+    ##
+
+
     @property
     def dtype(self):
         return self.lm.dtype
