@@ -27,7 +27,7 @@ def inference(
     data_path: str,
     model_path: str,
     test_batch_size: int=1,
-    test_num_workers: int=4,
+    test_num_workers: int=8,
     device: str='cuda' if torch.cuda.is_available() else 'cpu'
     ) -> None:
     """
