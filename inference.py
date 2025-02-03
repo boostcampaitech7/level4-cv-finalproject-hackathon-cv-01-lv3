@@ -12,6 +12,7 @@ import asyncio
 import httpx
 import pandas as pd
 from translate import translation
+from tqdm import tqdm
 
 def sec_to_time(sec: int) -> str:
     """
@@ -69,7 +70,7 @@ def inference(
         use_segment=True,
         use_audio=False,
         train=False,
-        num_frames=8,
+        num_frames=11,
         save_frames_as_img=False
     )
     
@@ -83,12 +84,13 @@ def inference(
     )
     model.eval()
     submission = pd.DataFrame(columns=['segment_name', 'start_time', 'end_time', 'caption', 'caption_ko'])
-    for batch in test_loader:
+    for batch in tqdm(test_loader, desc="Inferencing", unit="batch", total=len(test_loader)):
         frames = batch['frames'].to(device)
+        print(f"frames.shape before going into frames: {batch['frames'].shape}")
         outputs = model.chat(
             tokenizer=tokenizer,
             msg='',
-            user_prompt='How many people comes out in the video? How do they look like? Describe it in very detail',
+            user_prompt='Describe the video in detail.',
             instruction="Carefully watch the video and pay attention to the cause and sequence of events, the detail and movement of objects, and the action and pose of persons.",
             media_type='video',
             media_tensor=frames,
@@ -101,7 +103,7 @@ def inference(
         )
         new_row = pd.DataFrame([{'segment_name': batch['segment_names'][0], 'start_time': sec_to_time(batch['start_times'][0]), 'end_time': sec_to_time(batch['end_times'][0]), 'caption': outputs[0].strip(), 'caption_ko': asyncio.run(translation(outputs[0], 'en'))}])
         submission = pd.concat([submission, new_row], ignore_index=True)
-    submission.to_csv(f"v2t_submission.csv", index=False, encoding='utf-8')
+    submission.to_csv(f"v2t_submission_HD_11_224.csv", index=False, encoding='utf-8')
     
 
 

@@ -104,7 +104,7 @@ def train(
         use_segment=True,
         use_audio=False,
         train=False,
-        num_frames=1
+        num_frames=16
     )
 
     test_dataset = InternVideo2_VideoChat2_Dataset(
