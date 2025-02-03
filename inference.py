@@ -6,7 +6,7 @@ from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 from decord import VideoReader, cpu
 import torch.nn.functional as F
 import torchvision.transforms as T
-from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader
+from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader, InternVideo2_VideoChat2_
 from googletrans import Translator
 import asyncio
 import httpx
@@ -79,6 +79,8 @@ def inference(
         pin_memory=True,
         use_audio=False
     )
+    for 
+    return
     model.eval()
     submission = pd.DataFrame(columns=['segment_name', 'start_time', 'end_time', 'caption', 'caption_ko'])
     for batch in test_loader:
