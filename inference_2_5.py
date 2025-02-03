@@ -26,7 +26,7 @@ def inference_2_5(
     data_path: str,
     model_path: str = 'OpenGVLab/InternVideo2_5_Chat_8B',
     test_batch_size: int=1,
-    test_num_workers: int=4,
+    test_num_workers: int=8,
     num_frames : int = 32,
     device: str='cuda' if torch.cuda.is_available() else 'cpu'
     ) -> None:
@@ -94,14 +94,15 @@ def inference_2_5(
             pixel_values=pixel_values,
             question="Describe this video in detail.",
             generation_config = {
-                'do_sample': False, # false = greedy search , True 의 경우, t>0
+                'do_sample': False, # False is greedy search
                 'max_new_tokens': 512,
-                'num_beams' : 1, # bream search
+                'num_beams' : 1, 
                 'temperature' : 0,
-                'top_p' : 0.1, # top_k , p시 필요
+                'top_p' : 0.1,
+                'top_k' : None  
             },
-            history = None,
-            return_history = False , 
+            return_history = False , #반환값으로 chat_history 추가 여부 선택 
+            history = None, # 이전 chat에서 반환된 histroy를 참고시 인자에 대입. 
             num_patches_list = None,
             )
 
