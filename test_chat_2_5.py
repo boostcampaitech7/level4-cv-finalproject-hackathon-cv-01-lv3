@@ -39,11 +39,12 @@ def generate_response(model, tokenizer, device, video_path: str, question: str):
     pixel_values = preprocess_frames(pixel_values).to(device).half()
     
     generation_config = dict(
-        do_sample=False,  # False = greedy search
+        do_sample=False,  # False is greedy search
         max_new_tokens=512,
         num_beams=1,  # Beam search
         temperature=0,
         top_p=0.1,
+        top_k = None
     )
     
     response = model.chat(
@@ -51,7 +52,9 @@ def generate_response(model, tokenizer, device, video_path: str, question: str):
         pixel_values=pixel_values,
         question=question,
         generation_config=generation_config,
-        num_patches_list=None
+        num_patches_list=None,
+        return_history = False , #반환값으로 chat_history 추가 여부 선택 
+        history = None, # 이전 chat에서 반환된 histroy를 참고시 인자에 대입. 
     )
     
     return response
@@ -62,9 +65,9 @@ if __name__ == "__main__":
     model_path = "OpenGVLab/InternVideo2_5_Chat_8B"
     model, tokenizer, device = load_model(config_path, model_path)
     
-    # 입력 비디오 및 프롬프트 설정
-    video_path = "/data/ephemeral/home/data_1/D3/DR/train/video/D3_DR_0804_000001.mp4"
-    question = "Please describe the movements of the people in the video in temporal order."
+    # 입력 비디오 경로 및 프롬프트 설정
+    video_path = "YOURVIDE.MP4FILEOPATH"
+    question = "Carefully watch the video and pay attention to the cause and sequence of events, the detail and movement of objects, and the action and pose of persons."
     
     # 응답 생성
     response = generate_response(model, tokenizer, device, video_path, question)
