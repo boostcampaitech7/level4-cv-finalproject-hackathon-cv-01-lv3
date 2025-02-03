@@ -144,6 +144,7 @@ class InternVideo2_VideoChat2(BaseMLLM):
                 B, T, C, H, W = video.shape
                 N = 1
             else:
+                print(f"video.shape: {video.shape}")
                 B, N, T, C, H, W = video.shape
             
             video = video.reshape(B*N, T, C, H, W).permute(0, 2, 1, 3, 4)
@@ -155,7 +156,10 @@ class InternVideo2_VideoChat2(BaseMLLM):
 
             seq_length = text_embeds.shape[1]  # 150
             padded_video_idx = torch.zeros(B, seq_length).to(video_idx.device)
-
+            print(f"padded_video_idx: {padded_video_idx.shape}")
+            print(f"video_idx.shape: {video_idx.shape}")
+            print(f"text_embeds.shape: {text_embeds.shape}")
+            print(f"prompt_video_embeds.shape: {prompt_video_embeds.shape}")
             padded_video_idx[:, :video_idx.shape[1]] = video_idx
             
             # 입력으로 받은 text_embeds에 video_idx에 vision encoder 결과를 더함.
@@ -393,7 +397,7 @@ class InternVideo2_VideoChat2(BaseMLLM):
                 tokenized['input_ids'].unsqueeze(0).to(self.device), 
                 tokenized['attention_mask'].unsqueeze(0).to(self.device), 
                 video_idx = tokenized['index'].unsqueeze(0),
-                video = media_tensor.unsqueeze(0), 
+                video = media_tensor,#.unsqueeze(0), 
                 **generation_config)
         response = tokenizer.batch_decode(generation_output, skip_special_tokens=True)[0]
         if return_history:

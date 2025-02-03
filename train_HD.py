@@ -18,7 +18,7 @@ def train(
     model_path: str,
     data_path: str = "../../data",
     num_epochs: int = 1000,
-    train_batch_size: int = 2,
+    train_batch_size: int = 1,
     test_batch_size: int = 1,
     train_num_workers: int = 4,
     test_num_workers: int = 4,
@@ -162,7 +162,6 @@ def train(
             frames = batch['frames'].to(device)
             annotations = batch['annotations']
             print(f"frames.shape: {frames.shape}")
-            return
             # 텍스트 토큰화
             text_inputs = tokenizer(
                 annotations,
@@ -180,7 +179,7 @@ def train(
                 labels=text_inputs.input_ids,
                 video_idx=torch.ones(frames.shape[0], query_embedding_size).to(device)
             )
-
+            return
             loss = outputs.loss
             epoch_loss += loss.item()
             loss.backward()
