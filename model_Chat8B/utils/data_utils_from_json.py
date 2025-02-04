@@ -356,8 +356,8 @@ class InternVideo2_VideoChat2_Image_Dataset(Dataset):
             audio_reader_type: str = 'lazy_load_audio',
             audio_sample_rate: int = 16000,
             max_audio_length: int = 1000000,
+            num_sampling: int = 1,
             train: bool = True,
-            num_frames: int = 8,
             save_frames_as_img: bool = False,
     ):
         # image
@@ -371,48 +371,51 @@ class InternVideo2_VideoChat2_Image_Dataset(Dataset):
         # self.audio_reader_type: str = audio_reader_type
         # self.audio_sample_rate: int = audio_sample_rate
         # self.max_audio_length: int = max_audio_length
-        self.num_frames: int = num_frames
         self.save_frames_as_img: bool = save_frames_as_img
-        
-    def __len__(self):
-        # json형태의 annotations가 각 segment마다 하나씩 존재하므로, json파일의 개수를 반환하면 됨
-        return len(self.labels)
+        self.num_sampling = num_sampling
+        self.all_frames = self._prepare_frames()
+    
+    def _prepare_frames(self):
+        # segment 예시: "'ViDEOPATH'_'SEGMENTINDEX'"
+        all_frames = []
+        for label in self.labels:
+            with open(label, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+            segment_name = list(data.keys())[0]
+            start_time = data[segment_name]['start_time']
+            end_time = data[segment_name]['end_time']
+
+            
+            annotation = data[segment_name]['caption']
+            video_path = self.label_to_video(label)
+            assert video_path is not None and isinstance(video_path, str), "video_path must be a string, or not None"
+            assert annotation is not None and isinstance(annotation, str), "annotation must be a string, or not None"
+            
+            # HH_MM_SS 형식을 초 단위로 변환
+            h, m, s = map(int, start_time.split(':'))
+            start_time = h * 3600 + m * 60 + s
+            
+            h, m, s = map(int, end_time.split(':'))
+            end_time = h * 3600 + m * 60 + s
+            
+            # 동영상 읽기
+            frames, frame_indices = read_frame_cv2(
+                video_path, self.use_segment, start_time, end_time, self.s3_client, num_sampling=self.num_sampling, save_frames_as_img = self.save_frames_as_img)
+
+            for frame, frame_index in zip(frames, frame_indices):
+                all_frames.append({
+                'frame': self.preprocess_frames(frame),
+                'frame_index': frame_index,
+                'segment_name': segment_name,
+                'annotation': annotation,
+            })
+        return all_frames
     
     def __getitem__(self, index):
-        # segment 예시: "'ViDEOPATH'_'SEGMENTINDEX'"
-        with open(self.labels[index], 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        segment_name = list(data.keys())[0]
-        start_time = data[segment_name]['start_time']
-        end_time = data[segment_name]['end_time']
-
-        
-        annotation = data[segment_name]['caption']
-        video_path = self.label_to_video(self.labels[index])
-        assert video_path is not None and isinstance(video_path, str), "video_path must be a string, or not None"
-        assert annotation is not None and isinstance(annotation, str), "annotation must be a string, or not None"
-        
-        # HH_MM_SS 형식을 초 단위로 변환
-        h, m, s = map(int, start_time.split(':'))
-        start_time = h * 3600 + m * 60 + s
-        
-        h, m, s = map(int, end_time.split(':'))
-        end_time = h * 3600 + m * 60 + s
-        
-        # 동영상 읽기
-        frames, frame_index = read_frame_cv2(
-            video_path, self.use_segment, start_time, end_time, self.s3_client, num_frames = self.num_frames, save_frames_as_img = self.save_frames_as_img)
-
-        
-        data = {
-            'frames': self.preprocess_frames(frames),
-            'frame_indices': frame_indices,
-            'segment_name': segment_name,
-            'annotation': annotation,
-            'start_time' : start_time,
-            'end_time' : end_time
-        }
-        return data
+        return self.all_frames[index]
+    
+    def __len__(self):
+        return len(self.all_frames)
     
     def label_to_video(self, label: str) -> str:
         '''
@@ -481,7 +484,7 @@ class InternVideo2_VideoChat2_Image_Dataset(Dataset):
             mismatched_samples_labels = [os.path.basename(x).replace('mp4', 'json') for x in mismatch_no_labels]
             raise RuntimeError(f"{len(mismatch_no_clips) + len(mismatch_no_labels)} sample(s) mismatched!\n Missing clips: {mismatched_samples_clips}\n Missing labels: {mismatched_samples_labels}")
 
-    def preprocess_frames(self, frames, use_albumentations: bool = False):
+    def preprocess_frames(self, frame, use_albumentations: bool = False):
         '''
         각 프레임을 전처리하는 함수,
         common transform 적용, albumentations 사용 시 추가 적용 가능
@@ -498,27 +501,77 @@ class InternVideo2_VideoChat2_Image_Dataset(Dataset):
 
         try:
             # frames를 float32로 변환하고 정규화 (0-1 범위)
-            frames = frames.float() / 255.0
+            frame = frame.float() / 255.0
             
             # (T, C, H, W) 형태로, 각 프레임에 대한 전처리 진행
             # 전체 프레임에 대해 한 번에 resize 적용
-            T, C, H, W = frames.shape
-            frames = frames.contiguous().view(-1, C, H, W)  # (T * C, H, W)
+            C, H, W = frame.shape
+            frame = frame.contiguous().view(C, H, W)  # (C, H, W)
             # print(f"frames shape: {frames.shape}")
-            frames = self.transform(frames)
-            frames = frames.view(T, C, 224, 224)  # (T, C, 224, 224)
+            frame = self.transform(frame)
+            frame = frame.view(C, 224, 224)  # (C, 224, 224)
 
             # print(f"Input frames shape: {frames.shape}")
             # print(f"Input frames dtype: {frames.dtype}")
-            return frames
+            return frame
         
         except Exception as e:
             raise RuntimeError(f"Error processing frames: {str(e)}")
     
     # 데이터셋 정보 출력
     def __repr__(self):
-        return f"""InternVideo2_VideoChat2_Dataset(
-            num_frames: {len(self.frame_indices)}
-            duration: {self.duration:.2f}s
-            frame_shape: {self.frames[0].shape if len(self.frames) > 0 else None}
+        return f"""InternVideo2_VideoChat2_Image_Dataset(
+            num_frames: {len(self.all_frames)}
+            frame_shape: {self.all_frames[0].shape if len(self.all_frames) > 0 else None}
         )"""
+    
+
+class InternVideo2_VideoChat2_Image_DataLoader(DataLoader):
+    def __init__(
+        self,
+        dataset: InternVideo2_VideoChat2_Image_Dataset,
+        batch_size: int = 2,
+        shuffle: bool = True,
+        num_workers: int = 4,
+        pin_memory: bool = True,
+    ):
+        """
+        이미지 데이터 로더 초기화
+        Args:
+            dataset: InternVideo2_VideoChat2_Image_Dataset, 데이터셋 인스턴스
+            batch_size: 배치 크기, 기본 2
+            shuffle: 데이터 셔플 여부, 기본 False
+            num_workers: 데이터 로딩에 사용할 워커 수, 기본 4
+            pin_memory: GPU 메모리 고정 여부, 기본 True
+        Returns:
+            dataloader: torch.utils.data.DataLoader, 데이터로더 인스턴스
+        """
+        self.dataset = dataset
+        self.batch_size = batch_size
+        
+        # Dataset에서 반환하는 data: dict 에서 학습에 필요한 데이터 반환 
+        def collate_fn(batch):
+            return {
+                'frames': torch.stack([item['frame'] for item in batch]),
+                'segment_names': [item['segment_name'] for item in batch],
+                'frame_indices' : [item['frame_index'] for item in batch],
+                'annotations': [item['annotation'] for item in batch] if 'annotation' in batch[0] else None,
+            }
+        
+        # DataLoader 초기화
+        super().__init__(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=collate_fn,  # <- 여기에 추가
+        )
+        self.dataloader = DataLoader(
+            dataset=self.dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=collate_fn,
+        )

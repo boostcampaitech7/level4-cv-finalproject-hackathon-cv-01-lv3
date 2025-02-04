@@ -4,7 +4,7 @@ from transformers import AutoTokenizer, AutoModel
 
 # 첫번째 로그인 설정 때만 주석 해제 후 사용해주세요
 from huggingface_hub import login
-login(token="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")
+login(token="your_token")
 
 def download_model(model_list:list, file_list:list, local_dir:str) -> None:
     '''
@@ -35,7 +35,7 @@ def download_model(model_list:list, file_list:list, local_dir:str) -> None:
 def main():
     # 모델 이름 입력
     model_name = [
-        "OpenGVLab/InternVideo2_chat_8B_HD",
+        "OpenGVLab/InternVideo2-Chat-8B",
         ]
 
     # 파일 이름 입력
