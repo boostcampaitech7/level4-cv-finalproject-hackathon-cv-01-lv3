@@ -22,10 +22,10 @@ def train(
     test_batch_size: int = 1,
     train_num_workers: int = 4,
     test_num_workers: int = 4,
-    learning_rate: float = 1e-4,
-    weight_decay: float = 1e-2,
-    validation_interval: int = 5,
-    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    learning_rate: float = None,
+    weight_decay: float = None,
+    validation_interval: int = None,
+    device: str = None
 ):
     """
     모델을 학습시키는 함수, 일정 주기로 validation을 수행함.
@@ -44,6 +44,26 @@ def train(
         device: CPU or GPU
     """
 
+    # WandB 초기화를 최상단으로 이동
+    wandb.init(
+        project="cv-finalproject",
+        entity="boostcamp-cv-01",
+        config={
+            'learning_rate': learning_rate or 1e-4,
+            'weight_decay': weight_decay or 1e-2,
+            'validation_interval': validation_interval or 5
+        }
+    )
+
+    
+    # 하이퍼파라미터 설정 코드 수정
+    learning_rate = wandb.config.learning_rate  # WandB에서 주입받은 값 사용
+    weight_decay = wandb.config.weight_decay
+    validation_interval = wandb.config.validation_interval
+    
+    # 하이퍼파라미터 기본값 설정
+    device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+    
     # 로깅을 위한 디렉토리 생성
     current_dir = os.path.dirname(os.path.abspath(__file__))
     log_dir = os.path.join(current_dir, 'logs', datetime.now().strftime('%Y%m%d_%H%M%S'))
@@ -69,12 +89,7 @@ def train(
     with open(os.path.join(log_dir, 'config.json'), 'w') as f:
         json.dump(config, f, indent=4)
 
-    # wandb 초기화
-    wandb.init(
-        project="videochat2-training",
-        config=config
-    )
-
+    # 모델 초기화
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config = VideoChat2Config.from_json_file(
         os.path.join(current_dir,'model','configs', 'config.json')
