@@ -14,7 +14,7 @@ import pandas as pd
 # clipping video
 from data.utils.clip_video import split_video_into_scenes
 from inference import inference
-
+from inference_2_5 import inference_2_5
 def sec_to_time(sec: int) -> str:
     """
     초(sec)을 시:분:초로 변환할 수 있는 함수입니다.
@@ -54,7 +54,9 @@ def main():
 
     
     # 2. seg captioning & translate
-    inference(data_dir, model_path)#video_root
+    # infernece(data_dir , model_path) : internvideo2.0  / inference_2_5(data_dir) : internvideo2.5
+    inference(data_dir, model_path)
+    # inference_2_5(data_dir)
 
 
 if __name__ == "__main__":
