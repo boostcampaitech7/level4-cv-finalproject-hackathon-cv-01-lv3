@@ -22,3 +22,13 @@ class VideoChat2Config(PretrainedConfig):
             **kwargs):
         super().__init__(**kwargs)
         self.model_config  = MyEasyDict(model_config)
+        
+class Qwen2_5_Config(PretrainedConfig):
+    model_type = 'qwen2'
+
+    def __init__(
+            self,
+            model_config=None,
+            **kwargs):
+        super().__init__(**kwargs)
+        self.model_config  = MyEasyDict(model_config)
