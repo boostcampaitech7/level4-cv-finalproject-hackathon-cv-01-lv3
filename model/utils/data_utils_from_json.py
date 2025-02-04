@@ -60,7 +60,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             audio_sample_rate: int = 16000,
             max_audio_length: int = 1000000,
             train: bool = True,
-            num_frames: int = 8,
+            num_frames: int = 16,
             save_frames_as_img: bool = False,
     ):
         # video
