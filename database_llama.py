@@ -1,10 +1,13 @@
 import os
 import torch
+from transformers import AutoTokenizer, AutoConfig
+from model.sources.model_config import VideoChat2Config
+from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
+import torch.nn.functional as F
 from elasticsearch import Elasticsearch
 import pandas as pd
 from translate import translation
 import math
-from sentence_transformers import SentenceTransformer
 from bert_score import score
 
 def get_elasticsearch_client():
@@ -20,18 +23,56 @@ def get_elasticsearch_client():
     )
 
 class VideoCaption:
-    def __init__(self):
+    def __init__(self, model_path):
         # 설정 로드
-        # SBERT 기반 모델 로드
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.config = VideoChat2Config.from_json_file(os.path.join('model/configs','config.json'))
+        
         # 토크나이저 초기화
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.config.model_config.llm.pretrained_llm_path,
+            trust_remote_code=True,
+            use_fast=False,
+            token=os.getenv('HF_TOKEN')
+        )
+        # 패딩 토큰 설정
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # 모델 초기화
+        if torch.cuda.is_available():
+            self.model = InternVideo2_VideoChat2.from_pretrained(
+                model_path,
+                config=self.config,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True
+            ).cuda()
+        else:
+            self.model = InternVideo2_VideoChat2.from_pretrained(
+                model_path,
+                config=self.config,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True
+            )
+        self.model.eval()
 
     def encode_text(self, text):
         """텍스트를 임베딩 벡터로 변환"""
         with torch.no_grad():
-            text_embedding = self.model.cuda().encode(text, normalize_embeddings=True)
+            inputs = self.tokenizer(
+                text,
+                padding=True,
+                truncation=True,
+                max_length=512,
+                return_tensors="pt"
+            )
             
-            return text_embedding
+            if torch.cuda.is_available():
+                inputs = {k: v.cuda() for k, v in inputs.items()}
+            
+            text_embeds = self.model.lm.get_input_embeddings()(inputs['input_ids'])
+            mean_embedding = text_embeds.mean(dim=1).squeeze()
+            mean_embedding = mean_embedding.float().cpu().numpy()
+            
+            return mean_embedding
 
     def generate_embedding(self, caption):
         """embedding 생성"""
@@ -59,7 +100,7 @@ class VideoCaption:
 
 def create_index():
     client = get_elasticsearch_client()
-    index_name = "video_embeddings_bert"
+    index_name = "video_embeddings"
     
     # 기존 인덱스가 있다면 삭제
     if client.indices.exists(index=index_name):
@@ -89,11 +130,14 @@ def save_from_csv(csv_path: str):
     # CSV 파일 읽기
     df = pd.read_csv(csv_path)
     
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, 'model/weights')
+    captioner = VideoCaption(model_path)
     
     for _, row in df.iterrows():
         # 이미 존재하는 segment_name인지 확인
         search_result = client.search(
-            index="video_embeddings_bert",
+            index="video_embeddings",
             body={
                 "query": {
                     "term": {
@@ -108,22 +152,32 @@ def save_from_csv(csv_path: str):
             print(f"Skipping {row['segment_name']}: Already exists")
             continue
         
-        captioner = VideoCaption()
         try:
             # 임베딩 생성
             embedding = captioner.generate_embedding(row['caption'])
             
             # Elasticsearch에 저장
-            # caption_ko를 제외하고 입력
-            captioner.save_to_elasticsearch(
-                client=client,
-                segment_name=row['segment_name'],
-                start_time=row['start_time'],
-                end_time=row['end_time'],
-                caption=row['caption'],
-                caption_ko=translation(row["caption"], typ='en'),
-                embedding=embedding
-            )
+            # caption_ko가 없는 경우 caption_ko를 제외하고 입력
+            if not math.isnan(row['caption_ko']):
+                captioner.save_to_elasticsearch(
+                    client=client,
+                    segment_name=row['segment_name'],
+                    start_time=row['start_time'],
+                    end_time=row['end_time'],
+                    caption=row['caption'],
+                    caption_ko=row['caption_ko'],
+                    embedding=embedding
+                )
+            else:
+                captioner.save_to_elasticsearch(
+                    client=client,
+                    segment_name=row['segment_name'],
+                    start_time=row['start_time'],
+                    end_time=row['end_time'],
+                    caption=row['caption'],
+                    caption_ko=translation(row["caption"], typ='en'),
+                    embedding=embedding
+                )
             print(f"Successfully processed: {row['segment_name']}")
             
         except Exception as e:
@@ -151,13 +205,16 @@ def calculate_bertscore(query_text: str, hits):
 def search_videos(query_text: str):
     client = get_elasticsearch_client()
     
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, 'model/weights')
+    captioner = VideoCaption(model_path)
+    
     # 쿼리 텍스트를 임베딩 벡터로 변환
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    query_embedding = model.encode(query_text, normalize_embedding=True)
+    query_embedding = captioner.generate_embedding(query_text)
     
     # 벡터 유사도 검색 쿼리 구성
     search_query = {
-        "size": 5,  # 상위 5개 결과 반환
+        "size": 20,  # 상위 5개 결과 반환
         "query": {
             "script_score": {
                 "query": {"match_all": {}},
@@ -171,7 +228,7 @@ def search_videos(query_text: str):
     
     # 검색 실행
     try:
-        results = client.search(index="video_embeddings_bert", body=search_query)
+        results = client.search(index="video_embeddings", body=search_query)
         print("\n1 Stage Search Results:")
         for hit in results['hits']['hits']:
             score = hit['_score']
@@ -187,7 +244,10 @@ def search_videos(query_text: str):
 
 def prefiltering(query_text: str):
     client = get_elasticsearch_client()
-    captioner = VideoCaption()
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, 'model/weights')
+    captioner = VideoCaption(model_path)
     
     # 쿼리 텍스트를 임베딩 벡터로 변환
     query_embedding = captioner.generate_embedding(query_text)
@@ -208,7 +268,7 @@ def prefiltering(query_text: str):
     
     # 검색 실행
     try:
-        results = client.search(index="video_embeddings_bert", body=search_query)
+        results = client.search(index="video_embeddings", body=search_query)
         hits = results['hits']['hits']
         return hits
     except Exception as e:
@@ -239,6 +299,7 @@ def two_stage_search_videos(query_text: str):
 
 if __name__ == "__main__":
     import sys
+    
     if len(sys.argv) < 2:
         print("Usage:")
         print("1. Create index: python create_index.py create")
