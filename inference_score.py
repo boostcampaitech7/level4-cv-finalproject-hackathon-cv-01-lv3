@@ -5,10 +5,6 @@ import json
 import os
 
 def find_file(root_dir, target_filename):
-    """
-    지정된 root_dir(하위 폴더 포함) 내에서 target_filename을 검색하여
-    파일 경로를 반환합니다.
-    """
     for root, dirs, files in os.walk(root_dir):
         if target_filename in files:
             return os.path.join(root, target_filename)
@@ -17,6 +13,7 @@ def find_file(root_dir, target_filename):
 def main():
     data_path = "../../data"
     model_path = "./model/weights"
+    #inference.py에서 inference 함수 불러와서 결과주는 코드 
     inference(data_path, model_path)
     
     csv_file_path = "./v2t_submission.csv"
@@ -24,14 +21,12 @@ def main():
 
     results = []
     
-    # DataFrame의 각 행에 대해 반복
     for index, row in inference_result.iterrows():
         target_filename = str(row['segment_name']) + ".json"
         
-        # ../../data 폴더 내에서 target_filename 검색
+       
         gt_file_path = find_file("../../data", target_filename)
         
-        # JSON 파일 열기
         with open(gt_file_path, 'r', encoding='utf-8') as f:
             gt = json.load(f)
             reference = gt.get('caption')
@@ -55,7 +50,7 @@ def main():
             "BLEU Score": bleu,
             "Meteor Score": meteor,
             "BERT Score": bert,
-            "ROUGE Score": json.dumps(rouge_str)  # 딕셔너리 형태를 문자열로 저장
+            "ROUGE Score": json.dumps(rouge_str) 
         })
 
         print(row['segment_name'])
