@@ -2,8 +2,6 @@ import os
 import torch
 from elasticsearch import Elasticsearch
 import pandas as pd
-from translate import translation
-import math
 from sentence_transformers import SentenceTransformer
 from bert_score import score
 
@@ -75,7 +73,7 @@ def create_index():
                 "end_time": {"type": "keyword"},
                 "caption": {"type": "text"},
                 "caption_ko": {"type": "text"},
-                "caption_embedding": {"type": "dense_vector", "dims": 4096}
+                "caption_embedding": {"type": "dense_vector", "dims": 384}
             }
         }
     }
@@ -121,8 +119,9 @@ def save_from_csv(csv_path: str):
                 start_time=row['start_time'],
                 end_time=row['end_time'],
                 caption=row['caption'],
-                caption_ko=translation(row["caption"], typ='en'),
-                embedding=embedding
+                caption_ko="",
+                embedding=embedding,
+                index_name="video_embeddings_bert"
             )
             print(f"Successfully processed: {row['segment_name']}")
             
