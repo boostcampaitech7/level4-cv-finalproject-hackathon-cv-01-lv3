@@ -18,8 +18,6 @@ sys.path.append(project_root)
 from model.sources.model_config import VideoChat2Config
 from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 
-from .model_load import ModelLoad
-
 class VideoLoad:
     def __init__(self, current_dir):
         self.config = VideoChat2Config.from_json_file(os.path.join(project_root, "model/configs/config.json"))

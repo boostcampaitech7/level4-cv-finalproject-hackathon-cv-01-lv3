@@ -4,7 +4,7 @@ import gradio as gr
 import shutil
 import ffmpeg
 import subprocess
-
+from database import run
 # 시스템 경로를 추가하여 상위 경로 접근 가능하도록 변경
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -199,6 +199,11 @@ def video_capture_input(*videos):
     valid_videos = [v for v in videos if v is not None]
     return f"처리된 동영상 개수: {len(valid_videos)}"
 
+def process_video_info(input_text):
+    best_match, video_path = run(input_text)
+    print(f"video_path: {video_path}")
+    return best_match, update_video(video_path)
+
 input_video_num = 3
 
 multi_video_interface = gr.Interface(
@@ -235,6 +240,7 @@ with gr.Blocks() as demo:
                         # 비디오 입력을 위한 컨테이너
                         with gr.Row() as input_container:
                             input_text = gr.Textbox(label="검색어 입력", lines=2)
+                            
                         
                         with gr.Row() as video_container:
                             video_inputs = []
@@ -249,9 +255,11 @@ with gr.Blocks() as demo:
                     with gr.Column() as output_column:
                         gr.Markdown("### 처리 결과")
                         output_text = gr.Textbox(label="처리된 비디오 정보", lines=2)
+                        
                         with gr.Row():
                             output_image = gr.Image(label="결과 이미지")
                             output_video = gr.Video(label="결과 비디오")
+                            submit_btn.click(fn=process_video_info, inputs=input_text, outputs=[output_text, output_video])
                         
             # 슬라이더 값 변경 시 비디오 입력 컴포넌트 표시/숨김 처리
             def update_visible_inputs(count):
@@ -265,22 +273,22 @@ with gr.Blocks() as demo:
                 inputs=[video_count],
                 outputs=video_inputs
             )
-            input_text.change(
-                fn=update_retrieval_inputs_text,
-                inputs=[input_text],
-                outputs=input_text
-            )
+            # input_text.change(
+            #     fn=update_retrieval_inputs_text,
+            #     inputs=[input_text],
+            #     outputs=input_text
+            # )
             # 비디오 처리 함수
-            def process_videos(*videos, input_text):
+            def process_videos(*videos):
                 valid_videos = [v for v in videos if v is not None]
                 return f"처리된 동영상 개수: {len(valid_videos)}"
 
-            # 제출 버튼 클릭 시 처리
-            submit_btn.click(
-                fn=process_videos,
-                inputs=[*video_inputs, input_text],
-                outputs=output_text
-            )
+            # # 제출 버튼 클릭 시 처리
+            # submit_btn.click(
+            #     fn=process_videos,
+            #     inputs=[*video_inputs, input_text],
+            #     outputs=output_text
+            # )
 
 
 

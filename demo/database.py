@@ -183,7 +183,7 @@ def search_videos(query_text: str):
             print(f"Similarity Score: {score}")
     except Exception as e:
         print(f"Error during search: {str(e)}")
-    return f"Segment_name: {source['segment_name']}, Start_time: {source['start_time']}, End_time: {source['end_time']}, Similarity Score: {score}"
+    return f"Segment_name: {source['segment_name']}, Start_time: {source['start_time']}, End_time: {source['end_time']}, Similarity Score: {score}", source['segment_name']
 
 def prefiltering(query_text: str):
     client = get_elasticsearch_client()
@@ -238,7 +238,15 @@ def two_stage_search_videos(query_text: str):
     return final_results
 
 def run(query_text: str):
-    return search_videos(query_text)
+    results, segment_name = search_videos(query_text)
+    return results, find_video('../../../data/data',segment_name)
+
+def find_video(data_path: str, segment_name: str):
+    dsrc, category, _, _ = segment_name.split('_')
+    video_path = os.path.join(data_path, dsrc.upper(), category)
+    for x in ['train', 'test']:
+        if os.path.exists(os.path.join(video_path, x, 'clips', f'{segment_name}.mp4')):
+            return os.path.join(video_path, x, 'clips', f'{segment_name}.mp4')
 
 if __name__ == "__main__":
     # import sys
