@@ -1,5 +1,7 @@
 #pip install nltk pycocoevalcap
 #pip install pycocoevalcap
+#pip install rouge_score
+#pip install bert_score
 
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from nltk.translate import meteor_score
@@ -7,6 +9,7 @@ import nltk
 nltk.download('wordnet')
 from pycocoevalcap.cider.cider import Cider
 from rouge_score import rouge_scorer
+from bert_score import score
 
 class InferenceEvaluator:
     def __init__(self, reference, hypothesis):
@@ -65,23 +68,33 @@ class InferenceEvaluator:
         scores = scorer.score(self.reference_str, self.hypothesis_str)
         return scores
     
-    def compute_cider(self):
-        """
-        CIDEr 점수를 계산합니다.
-        pycocoevalcap의 CIDEr 구현은 참조 문장과 가설 문장을 딕셔너리 형태로 받습니다.
-        예를 들어, 한 이미지에 대해 정답 캡션과 모델 출력 캡션을 아래와 같이 구성합니다.
-            gts = {0: [정답 캡션 문자열]}
-            res = {0: [모델 출력 캡션 문자열]}
+    # def compute_cider(self):
+    #     """
+    #     CIDEr 점수를 계산합니다.
+    #     pycocoevalcap의 CIDEr 구현은 참조 문장과 가설 문장을 딕셔너리 형태로 받습니다.
+    #     예를 들어, 한 이미지에 대해 정답 캡션과 모델 출력 캡션을 아래와 같이 구성합니다.
+    #         gts = {0: [정답 캡션 문자열]}
+    #         res = {0: [모델 출력 캡션 문자열]}
         
-        :return: CIDEr 점수 (평균 점수, 한 이미지의 경우 단일 값)
-        """
-        # pycocoevalcap의 CIDEr는 참조와 가설이 각각 문자열 리스트 형태로 주어져야 합니다.
-        gts = {0: [self.reference_str]}
-        res = {0: [self.hypothesis_str]}
+    #     :return: CIDEr 점수 (평균 점수, 한 이미지의 경우 단일 값)
+    #     """
+    #     # pycocoevalcap의 CIDEr는 참조와 가설이 각각 문자열 리스트 형태로 주어져야 합니다.
+    #     gts = {0: [self.reference_str]}
+    #     res = {0: [self.hypothesis_str]}
         
-        cider_scorer = Cider()
-        score, _ = cider_scorer.compute_score(gts, res)
-        return score
+    #     cider_scorer = Cider()
+    #     score, _ = cider_scorer.compute_score(gts, res)
+    #     return score
+    
+    def compute_bert(self):
+        """
+        BERT score 계산합니다. 
+        """
+        gts = [self.reference_str]
+        res = [self.hypothesis_str]
+        P, R, F1 = score(res, gts, lang="en")
+        # F1는 tensor 형태일 수 있으므로, 숫자로 변환합니다.
+        return F1.item()
 
 
 if __name__ == "__main__":
@@ -92,13 +105,15 @@ if __name__ == "__main__":
     evaluator = InferenceEvaluator(reference, hypothesis)
     bleu = evaluator.compute_bleu()
     meteor = evaluator.compute_meteor()
-    cider = evaluator.compute_cider()
+    # cider = evaluator.compute_cider()
     rouge = evaluator.compute_rouge()
+    bert = evaluator.compute_bert()
     
     
     print(f"BLEU Score: {bleu:.4f}")
     print(f"Meteor Score: {meteor:.4f}")
-    print(f"CIDEr Score: {cider:.4f}")
+    # print(f"CIDEr Score: {cider:.4f}")
+    print(f"BERT Score: {bert:.4f}")
     print("ROUGE Scores:")
     for key, value in rouge.items():
         print(f"  {key}: Precision: {value.precision:.4f}, Recall: {value.recall:.4f}, F1: {value.fmeasure:.4f}")
