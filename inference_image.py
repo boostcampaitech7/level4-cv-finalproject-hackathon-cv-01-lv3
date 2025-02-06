@@ -68,7 +68,7 @@ def inference(
         use_segment=True,
         use_audio=False,
         train=False,
-        num_sampling=3,
+        num_sampling=2,
         save_frames_as_img=True
     )
     
