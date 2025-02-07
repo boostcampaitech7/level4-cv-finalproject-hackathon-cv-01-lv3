@@ -62,7 +62,7 @@ def inference(
         trust_remote_code=True
     ).to(device)
     
-    test_dataset = InternVideo2_VideoChat2_Image_Dataset(
+    test_dataset = InternVideo2_VideoChat2_Dataset(
         data_path=data_path,
         use_segment=True,
         use_audio=False,
@@ -78,10 +78,6 @@ def inference(
         pin_memory=True,
         use_audio=False
     )
-    for x in test_loader:
-        print(type(x))
-        print(x['frames'].shape)
-    return
     model.eval()
     submission = pd.DataFrame(columns=['segment_name', 'start_time', 'end_time', 'caption', 'caption_ko'])
     for batch in test_loader:

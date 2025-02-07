@@ -29,6 +29,7 @@ def inference(
     model_path: str,
     test_batch_size: int=1,
     test_num_workers: int=4,
+    offset: int=1,
     device: str='cuda' if torch.cuda.is_available() else 'cpu'
     ) -> None:
     """
@@ -61,14 +62,15 @@ def inference(
         config=config,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True
-    ).to(device)
+    ).half().to(device)
     model.config.pad_token_id = tokenizer.pad_token_id
+
     test_dataset = InternVideo2_VideoChat2_Image_Dataset(
         data_path=data_path,
         use_segment=True,
         use_audio=False,
         train=False,
-        num_sampling=2,
+        num_frames=2,
         save_frames_as_img=True
     )
     
@@ -79,7 +81,9 @@ def inference(
         shuffle=False,
         pin_memory=True,
     )
+        
     model.eval()
+    print(f"model 위치: {model.device}")
     submission = pd.DataFrame(columns=['segment_name', 'start_time', 'end_time', 'caption', 'caption_ko'])
     for batch in tqdm(test_loader, desc="Inferencing", unit="batch", total=len(test_loader)):
         frames = batch['frames'].to(device)
@@ -87,7 +91,7 @@ def inference(
             tokenizer=tokenizer,
             msg='',
             user_prompt='Describe the image in detail.',
-            instruction="Carefully watch the image and pay attention to the cause and sequence of events, the detail and movement of objects, and the action and pose of persons.",
+            instruction="Carefully watch the image and pay attention to the events, the detail of objects, and the action and pose of persons.",
             media_type='image',
             media_tensor=frames,
             chat_history=[],
@@ -106,7 +110,7 @@ def inference(
 def main():
     data_path = "../../data"
     model_path = "./model/weights"
-    inference(data_path, model_path)
+    inference(data_path, model_path, offset=1)
 
 
 if __name__ == "__main__":
