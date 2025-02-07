@@ -6,12 +6,13 @@ from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 from decord import VideoReader, cpu
 import torch.nn.functional as F
 import torchvision.transforms as T
-from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader, InternVideo2_VideoChat2_Image_Dataset
+from model.utils.data_utils_from_json import InternVideo2_VideoChat2_Dataset, InternVideo2_VideoChat2_DataLoader, InternVideo2_VideoChat2_Image_Dataset, InternVideo2_VideoChat2_Image_DataLoader
 from googletrans import Translator
 import asyncio
 import httpx
 import pandas as pd
 from translate import translation
+from tqdm import tqdm
 
 def sec_to_time(sec: int) -> str:
     """
@@ -27,7 +28,8 @@ def inference(
     data_path: str,
     model_path: str,
     test_batch_size: int=1,
-    test_num_workers: int=8,
+    test_num_workers: int=4,
+    offset: int=1,
     device: str='cuda' if torch.cuda.is_available() else 'cpu'
     ) -> None:
     """
@@ -53,41 +55,44 @@ def inference(
         use_fast=False,
         token=os.getenv('HF_TOKEN')
     )
-
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     # 모델 초기화
     model = InternVideo2_VideoChat2.from_pretrained(
         model_path,
         config=config,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True
-    ).to(device)
-    
-    test_dataset = InternVideo2_VideoChat2_Dataset(
+    ).half().to(device)
+    model.config.pad_token_id = tokenizer.pad_token_id
+
+    test_dataset = InternVideo2_VideoChat2_Image_Dataset(
         data_path=data_path,
         use_segment=True,
         use_audio=False,
         train=False,
-        save_frames_as_img=False
+        num_frames=2,
+        save_frames_as_img=True
     )
     
-    test_loader = InternVideo2_VideoChat2_DataLoader(
+    test_loader = InternVideo2_VideoChat2_Image_DataLoader(
         dataset=test_dataset,
         batch_size=test_batch_size,
         num_workers=test_num_workers,
         shuffle=False,
         pin_memory=True,
-        use_audio=False
     )
+        
     model.eval()
+    print(f"model 위치: {model.device}")
     submission = pd.DataFrame(columns=['segment_name', 'start_time', 'end_time', 'caption', 'caption_ko'])
-    for batch in test_loader:
+    for batch in tqdm(test_loader, desc="Inferencing", unit="batch", total=len(test_loader)):
         frames = batch['frames'].to(device)
         outputs = model.chat(
             tokenizer=tokenizer,
             msg='',
-            user_prompt='Describe the video in detail.',
-            instruction="Carefully watch the video and pay attention to the cause and sequence of events, the detail and movement of objects, and the action and pose of persons.",
-            media_type='video',
+            user_prompt='Describe the image in detail.',
+            instruction="Carefully watch the image and pay attention to the events, the detail of objects, and the action and pose of persons.",
+            media_type='image',
             media_tensor=frames,
             chat_history=[],
             return_history=True,
@@ -96,16 +101,16 @@ def inference(
                 'max_new_tokens': 256,
             }
         )
-        new_row = pd.DataFrame([{'segment_name': batch['segment_names'][0], 'start_time': sec_to_time(batch['start_times'][0]), 'end_time': sec_to_time(batch['end_times'][0]), 'caption': outputs[0].strip(), 'caption_ko': asyncio.run(translation(outputs[0], 'en'))}])
+        new_row = pd.DataFrame([{'segment_name': batch['segment_names'][0], 'frame_index': batch['frame_indices'][0], 'caption': outputs[0].strip(), 'caption_ko': asyncio.run(translation(outputs[0], 'en'))}])
         submission = pd.concat([submission, new_row], ignore_index=True)
-    submission.to_csv(f"v2t_submission.csv", index=False, encoding='utf-8')
+    submission.to_csv(f"F2t_submission_new.csv", index=False, encoding='utf-8')
     
 
 
 def main():
     data_path = "../../data"
     model_path = "./model/weights"
-    inference(data_path, model_path)
+    inference(data_path, model_path, offset=1)
 
 
 if __name__ == "__main__":
