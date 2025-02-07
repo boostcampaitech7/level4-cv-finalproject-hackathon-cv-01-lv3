@@ -27,7 +27,7 @@ def save_video(video: str) -> str:
     video (str): 저장할 비디오 경로
     
     returns:
-      abs_path (str): 저장된 비디오 절대 경로
+    abs_path (str): 저장된 비디오의 절대 경로
     """
     save_dir = "./data/download_video/"
     os.makedirs(save_dir, exist_ok=True)
@@ -101,13 +101,15 @@ def clipping_video(video_path: str, start: str, end: str) -> str:
     ).run()
     return clip_path   
 
-def update_video(video_path: str):
+def update_video(video_path: str) -> dict:
     """
     video_path로 로컬 영상 파일 경로 업데이트
     
-    args: 비디오 경로
+    args: 
+    video_path(str): 비디오 경로
     
-    returns: 해당 경로가 존재하면 업데이트, 없으면 경고 메시지 출력
+    returns:
+    gr.update(value="video_path"): 해당 경로가 존재하면 업데이트
     """
     if os.path.exists(video_path):
         return gr.update(value=video_path)
@@ -115,13 +117,15 @@ def update_video(video_path: str):
         print(f"Error: {video_path} 파일이 존재하지 않습니다.")
         return gr.update(value="")  
 
-def update_image(image_path: str):
+def update_image(image_path: str) -> dict:
     """
     image_path로 로컬 이미지 파일 경로 업데이트
     
-    args: 이미지 경로
+    args:
+    image_path(str):이미지 경로
     
-    returns: 해당 경로가 존재하면 업데이트, 없으면 경고 메시지 출력
+    returns: 
+    gr.update(value="image_path"): 해당 경로가 존재하면 업데이트
     """
     if os.path.exists(image_path):
         return gr.update(value=image_path)
@@ -143,9 +147,24 @@ def view_video(
         hd_num = 6,
         user_prompt = "Describe the video step by step",
         instruction = "Carefully watch the video and describe what is happening in detail"
-    ):
+    ) -> tuple:
     """
     비디오 아이디를 받아서 비디오를 반환
+    
+    args:
+    video_id(str),
+    timestamp_start(int): 구간 시작 지점,
+    timestamp_end(int): 구간 끝 지점,
+    media_type(str): image인지 video인지를 명시,
+    num_segments(int),
+    resolution(int),
+    hd_num(int): HD Frame 수,
+    user_prompt(str),
+    instruction(str)
+    
+    returns:
+    video_path(str): 비디오 경로,
+    caption(str): 생성된 캡션
     """
     video_path = os.path.join(data_dir, vid_idx_table[video_id])
 
@@ -170,9 +189,24 @@ def view_image(
         num_segments = 1,
         user_prompt = "Describe the image step by step",
         instruction = "Carefully watch the image and describe what is happening in detail"
-    ):
+    ) -> tuple:
     """
-    비디오 아이디를 받아서 비디오를 반환
+    이미지 아이디를 받아서 이미지를 반환
+    
+    args:
+    video_id(str),
+    timestamp_start(int): 구간 시작 지점,
+    timestamp_end(int): 구간 끝 지점,
+    media_type(str): image인지 video인지를 명시,
+    num_segments(int),
+    resolution(int),
+    hd_num(int): HD Frame 수,
+    user_prompt(str),
+    instruction(str)
+    
+    returns:
+    image_path(str): 비디오 경로,
+    caption(str): 생성된 캡션
     """
     video_path = os.path.join(data_dir, vid_idx_table[video_id])
     image_path = extract_frame(video_path, timestamp_start)
@@ -187,14 +221,16 @@ def view_image(
     return update_image(image_path), caption
 
 
-def video_capture_input(*videos):
-    """동적 비디오 입력 처리 함수"""
-    valid_videos = [v for v in videos if v is not None]
-    return f"처리된 동영상 개수: {len(valid_videos)}"
-
-def process_video_info(*args):
+def process_video_info(*args:str) -> tuple:
     """
     T2V 가산점 평가를 위한 비디오 처리 함수
+    
+    args(str): 비디오 경로(10개), 한국어 검색어
+    
+    returns:
+    video_id(str): 비디오 아이디,
+    timestamp(str): 비디오 구간,
+    update_video(dict): 비디오 경로 업데이트
     """
     input_videos = args[:-1]
     # 한국어로 번역
@@ -212,9 +248,16 @@ def process_video_info(*args):
     
     return video_id, timestamp, update_video(video_path)
 
-def process_base_info(*args):
+def process_base_info(*args:str) -> tuple:
     """
     T2V 기본 평가를 위한 비디오 처리 함수
+    
+    args(str): 비디오 경로(10개), 한국어 검색어
+    
+    returns:
+    video_id(str): 비디오 아이디,
+    timestamp(str): 비디오 구간,
+    update_video(dict): 비디오 경로 업데이트
     """
     input_videos = args[:-1]
     # 한국어로 번역
@@ -234,10 +277,16 @@ def process_base_info(*args):
 
 
 
-def download_video(*videos):
+def download_video(*videos:str) -> Union[str, gr.components.Info]:
     """
     비디오를 다운로드하여 저장.
     저장된 파일 목록을 반환.
+    
+    args:
+    videos(str): 비디오 경로(10개)
+    
+    returns:
+    gr.Info(-> Union[str, gr.components.Info]): 동영상 제출 관련 메시지
     """
     
     for i, video in enumerate(videos):
@@ -257,7 +306,6 @@ def download_video(*videos):
 
     if vid_idx_table:
         file_list_str = "\n".join([f"{key}: {os.path.basename(value)}" for key, value in vid_idx_table.items()])
-        print(file_list_str)
         gr.Info("✅ 동영상 제출이 완료되었습니다!")
         return file_list_str
     else:
@@ -265,8 +313,13 @@ def download_video(*videos):
         return ""
 
 
-def clear_videos():
-    """SAVE_DIR에 저장된 동영상을 모두 삭제"""
+def clear_videos() -> Union[str, gr.components.Info]:
+    """
+    SAVE_DIR에 저장된 동영상을 모두 삭제
+    
+    returns:
+    gr.Info(-> Union[str, gr.components.Info]): 동영상 삭제 관련 메시지
+    """
     SAVE_DIR = "./data/download_video"
     if os.path.exists(SAVE_DIR):
         for file in os.listdir(SAVE_DIR):
@@ -278,20 +331,28 @@ def clear_videos():
     else:
         return gr.Info("⚠️ 삭제할 동영상이 없습니다.")
 
+
 ###### Interface ######
+
+# 비디오 인터페이스
 video_interface = gr.Interface(
     fn=view_video,
+    # 비디오 입력
     inputs=[gr.Textbox(label="Video ID"), gr.Textbox(label="Timestamp_start(HH:MM:SS)", placeholder="00:00:00"), 
             gr.Textbox(label="Timestamp_end(HH:MM:SS)", placeholder="00:00:00")
             ],
+    # 비디오 출력
     outputs=[
                        gr.Video(label="Video"), gr.Textbox(label="Generated Caption")
                     ]
 )
 
+# 이미지 인터페이스
 image_interface = gr.Interface(
     fn=view_image,
+    # 이미지 입력
     inputs=[gr.Textbox(), gr.Textbox(label="Timestamp(HH:MM:SS)", placeholder="00:00:00")],
+    # 이미지 출력
     outputs=[
                         gr.Image(label="Image"), gr.Textbox(label="Generated Caption")
                     ]
@@ -315,7 +376,9 @@ with gr.Blocks() as demo:
             with gr.Column():
                 clear_btn = gr.Button("삭제", size='lg')
         
+        # 제출 버튼 클릭 시, 업로드된 비디오를 다운로드
         submit_btn.click(fn=download_video, inputs=[*video_inputs], outputs=[file_list_output]) 
+        # 삭제 버튼 클릭 시, 업로드된 비디오 삭제
         clear_btn.click(fn=clear_videos, outputs=[file_list_output])
     # V2T 탭    
     with gr.Tab("Video to Text"):
@@ -352,6 +415,7 @@ with gr.Blocks() as demo:
 
                         submit_btn = gr.Button("처리 시작", size='lg')
 
+                    # 오른쪽 컬럼: 출력 컨트롤
                     with gr.Column():
                         gr.Markdown("### 처리 결과")
                         output_id = gr.Textbox(label="Video_id")
