@@ -125,9 +125,9 @@ for image_path in image_paths:
         num_patches_list = [pixel_values.size(0)]
         
         # 모델 실행
-        responses = model.cuda().batch_chat(tokenizer, pixel_values,
+        responses = model.cuda().chat(tokenizer, pixel_values,
                                             num_patches_list=num_patches_list,
-                                            questions=questions,
+                                            question=questions,
                                             generation_config=generation_config)
         
 
