@@ -114,7 +114,6 @@ def main(data_path: str = '../../data', test_batch_size: int = 1, test_num_worke
         # 음성
         speech_json_path = os.path.join(data_path, 'YT8M', 'Movieclips', 'test', 'stt', f'{base_name}.json')
         speech = get_speech_caption(vision_json_path, speech_json_path)
-        print(batch["segment_names"][0], speech)
         fusion_prompt = f"""<instruction> Answer only what you observed in the video clip. Do not repeat the same answer. Describe the video step by step. 
             Do not avoid answering, Answer only what you saw yourself, If you do not know the answer to a question.
             <information> {video_summary}, Genre of the video: {genre}, use overall context only to better understand the story </information>
@@ -129,10 +128,9 @@ def main(data_path: str = '../../data', test_batch_size: int = 1, test_num_worke
                                             question=prompt,
                                             generation_config=generation_config)
         # 결과 저장
-        print(responses)
         new_row = pd.DataFrame([{'segment_name': batch['segment_names'][0], 'start_time': batch['start_times'][0], 'end_time': batch['end_times'][0], 'caption': responses, 'caption_ko': asyncio.run(translation(responses, 'en'))}])
         submission = pd.concat([submission, new_row], ignore_index=True)
-    
+
     # 결과를 DataFrame으로 변환 후 CSV 저장
     after_time = time.time()
     csv_path = os.path.join('./', "v2t_submissions_InternVL2-5.csv")
