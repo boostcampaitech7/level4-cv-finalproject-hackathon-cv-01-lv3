@@ -7,7 +7,7 @@ import asyncio
 from model.utils.data_utils_from_json import InternVL_Video_Dataset, InternVL_Video_DataLoader
 from tqdm import tqdm
 import time
-
+import json
 
 path = "OpenGVLab/InternVL2_5-8B-MPO"
 model = AutoModel.from_pretrained(
@@ -27,6 +27,50 @@ def sec_to_time(sec: int) -> str:
     m = sec // 60
     h = sec // 3600
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+def time_to_seconds(time_str):
+    """HH:MM:SS 형식을 초 단위로 변환"""
+    h, m, s = map(int, time_str.split(':'))
+    return h * 3600 + m * 60 + s
+
+def load_summary_json(summary_dir: str, video_name: str):
+
+    data_path = os.path.join(summary_dir, f"{video_name}.json")
+    with open(data_path, 'r') as f:
+        data = json.load(f)
+    model_output = json.loads(data["model_output"])
+    return model_output["Genre"] , model_output["Summary"]
+
+
+def get_speech_caption(vision_caption_path, speech_caption_path):
+    # 비전 캡션 로드
+    with open(vision_caption_path, 'r') as f:
+        vision_data = json.load(f)
+    
+    # 음성 캡션 로드
+    with open(speech_caption_path, 'r') as f:
+        speech_data = json.load(f)
+
+    # 비전 타임라인 추출
+    video_id = next(iter(vision_data))  # 첫 번째 키 추출 (e.g. "yt8m_Movieclips_xcJXT5lc1Bg_001")
+    vision_start = time_to_seconds(vision_data[video_id]['start_time'])
+    vision_end = time_to_seconds(vision_data[video_id]['end_time'])
+
+    # 시간대 필터링
+    overlapping_speech = []
+    for speech in speech_data:
+        speech_start = time_to_seconds(speech['start_time'])
+        speech_end = time_to_seconds(speech['end_time'])
+        
+        # 시간대 겹침 조건 (부분 겹침 포함)
+        if (speech_start < vision_end) and (speech_end > vision_start):
+            overlapping_speech.append(speech['speech_cap'])
+
+    # 캡션 통합
+    merged_caption = ' '.join(overlapping_speech)
+    
+    return merged_caption
+
 
 def main(data_path: str = '../../data', test_batch_size: int = 1, test_num_workers: int = 4):
     test_dataset = InternVL_Video_Dataset(
@@ -51,7 +95,7 @@ def main(data_path: str = '../../data', test_batch_size: int = 1, test_num_worke
 
     submission = pd.DataFrame(columns=['segment_name', 'start_time', 'end_time', 'caption', 'caption_ko'])
     # questions = '<image>\nPlease describe the image in detail.'
-    
+    summary_dir = os.path.join(data_path, 'YT8M', 'Movieclips', 'test', 'summary_json')
     generation_config = dict(max_new_tokens=1024, do_sample=False)
     # set the max number of tiles in `max_num`
     before_time = time.time()
@@ -61,41 +105,34 @@ def main(data_path: str = '../../data', test_batch_size: int = 1, test_num_worke
         pixel_values = pixel_values.squeeze().to(torch.bfloat16).cuda()
         video_prefix = ''.join([f'Frame{i+1}: <image>\n' for i in range(len(num_patches_list))])
         
-        genre = "Movie"
-        video_summary =  "The video shows scenes from a movie, including a car driving at night, people in a car, and a store scene. It also includes credits and a website link."
-        speech = '''<merged_speech>: "So how much do I get paid? 25 bucks a car? Paid? You don't get paid. You kidding? You work on commission. That's better than being paid. Most cars you rip are worth two or three hundred dollars. A $50,000 Porsche might make you five grand. Come on, dickhead."
-        '''
-        
-        fused_prompt = f""" {{
-        "system_prompt": "Answer only what you observed in the video clip. Provide a detailed and complete description in at least two to three sentences. Do not repeat the same answer or evade the question.",
-        "user_prompt": "Describe the video clip step by step in two to three sentences. Clearly detail the visual elements, actions, objects, and their relationships. Overall video context for reference 
-        (note: the video summary contains details about the full video and may include events or locations not present in this clip): Genre: {genre}, Video Summary: {video_summary}.
-        Remember to focus on the clip content, and use the overall context only to better understand the story.",
-        
-        "topics": [
-            {{
-            "name": "Multi-Turn Video Description",
-            "initial_prompt": "Provide a detailed, step-by-step description of the video clip, incorporating all relevant details observed in the clip. Use the overall video context as reference only if necessary.",
-            "questions": [
-                "[step1]: Describe the visual elements, focusing on actions, objects, and their relationships.",
-                "[step2]: Explain the narrative structure and character motivations based solely on the clip.",
-                "[step3]: Verify consistency with earlier responses by adding temporal context (before, during, and after events observed in the clip).",
-                "[step4]: Summarize the previous steps into a cohesive paragraph that maintains logical continuity. Remember, the overall video context is provided only as a reference for understanding the full story, and may not reflect all details present in this clip."
-            ]
-            }}
-        ]
-        }}"""
-        
-        prompt = video_prefix + fused_prompt
+        # 요약
+        seg_name = batch['segment_names'][0]# edit(0208)
+        video_name = "_".join(seg_name.split("_")[:-1])
+        genre , video_summary = load_summary_json(summary_dir, video_name)
+        vision_json_path = os.path.join(data_path, 'YT8M', 'Movieclips', 'test', 'labels', f'{batch["segment_names"][0]}.json')
+        base_name = '_'.join(batch["segment_names"][0].split('_')[:-1])
+        # 음성
+        speech_json_path = os.path.join(data_path, 'YT8M', 'Movieclips', 'test', 'stt', f'{base_name}.json')
+        speech = get_speech_caption(vision_json_path, speech_json_path)
+        print(batch["segment_names"][0], speech)
+        fusion_prompt = f"""<instruction> Answer only what you observed in the video clip. Do not repeat the same answer. Describe the video step by step. 
+            Do not avoid answering, Answer only what you saw yourself, If you do not know the answer to a question.
+            <information> {video_summary}, Genre of the video: {genre}, use overall context only to better understand the story </information>
+            <speech> {speech} 
+            <question> Describe the action and object(human, items, natural, etc) in this video. Include some desciption of sppech information yourself.  
+            <request> Only answer in one sentences, but it also includes essential information from the video. 
+        """
+        prompt = video_prefix + fusion_prompt
 
         responses = model.cuda().chat(tokenizer, pixel_values,
                                             num_patches_list=num_patches_list,
                                             question=prompt,
                                             generation_config=generation_config)
         # 결과 저장
+        print(responses)
         new_row = pd.DataFrame([{'segment_name': batch['segment_names'][0], 'start_time': batch['start_times'][0], 'end_time': batch['end_times'][0], 'caption': responses, 'caption_ko': asyncio.run(translation(responses, 'en'))}])
         submission = pd.concat([submission, new_row], ignore_index=True)
-
+    
     # 결과를 DataFrame으로 변환 후 CSV 저장
     after_time = time.time()
     csv_path = os.path.join('./', "v2t_submissions_InternVL2-5.csv")
