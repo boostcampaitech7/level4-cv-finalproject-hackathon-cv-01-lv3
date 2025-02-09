@@ -31,17 +31,6 @@ import json
 # 비디오 경로를 저장하기 위한 딕셔너리
 vid_idx_table = {}
 
-def set_video_mapping():
-    # 비디오 경로를 저장하기 위한 딕셔너리
-    global vid_idx_table
-    mapping_txt=  '/data/ephemeral/home/hanseonglee_demo/level4-cv-finalproject-hackathon-cv-01-lv3/demo/video_ids.txt'
-    with open(mapping_txt, "r") as f:
-        for line in f:
-            video_id, video_path = line.strip().split()
-            vid_idx_table[video_id] = video_path
-    return vid_idx_table
-
-
 def save_video(video: str) -> str:
     """
     비디오를 받아서 저장 후에 경로 반환
@@ -58,9 +47,7 @@ def save_video(video: str) -> str:
     original_name = os.path.basename(video)  
     save_path = os.path.join(save_dir, original_name)  
 
-    shutil.copy(video, save_path)
-    # 원본 파일을 YT8M 디렉토리로 복사 TODO: external -> YT8M
-    shutil.copy(video, "/data/ephemeral/home/YT8M/externals")
+    shutil.copy(video, save_path)  
     abs_path = os.path.abspath(save_path)  
 
     return abs_path
@@ -212,13 +199,50 @@ def clipping_video(video_path: str, start: str, end: str) -> str:
     
     ffmpeg.input(video_path, ss=start, to=end).output(
         clip_path, 
-        vcodec='libx264', 
+        vcodec='h264', 
         crf=23, 
-        preset='fast', 
-        # acodec='aac', 
+        # preset='fast', 
+        acodec='aac', 
         audio_bitrate='128k'
     ).run()
     return clip_path   
+
+# def clipping_video_cv2(video_path: str, start: str, end: str) -> str:
+#     """
+#     args: 
+#     video (str): 클리핑할 비디오 경로
+#     start (str): 클리핑할 시작 타임스탬프
+#     end (str): 클리핑할 끝 타임스탬프
+
+#     returns: 
+#     clip_path (str): 클리핑된 이미지 절대 경로
+#     """
+#     # 확장자를 .jpg로 변경
+#     clip_path = os.path.abspath(f"{os.path.basename(video_path)}_clipped.jpg")
+#     os.makedirs(os.path.dirname(clip_path), exist_ok=True) 
+    
+#     if os.path.exists(clip_path):
+#         os.remove(clip_path)
+
+#     h, m, s = map(int, start.split(':'))
+#     start_seconds = h * 3600 + m * 60 + s
+   
+#     h, m, s = map(int, start.split(':'))
+#     end_seconds = h * 3600 + m * 60 + s
+
+#     cap = cv2.VideoCapture(video_path)
+#     if not cap.isOpened():
+#         raise ValueError("비디오 파일을 열 수 없습니다")
+    
+#     cap.set(cv2.CAP_PROP_POS_MSEC, start_seconds* 1000)
+#     success, frame = cap.read()
+#     if success:
+#         cv2.imwrite(clip_path, frame)  # jpg 파일로 저장
+#     else:
+#         raise RuntimeError("지정한 시간에 프레임을 추출할 수 없습니다")
+
+#     cap.release()
+#     return clip_path
 
 def update_video(video_path: str) -> dict:
     """
@@ -281,7 +305,9 @@ def view_video(
     video_path(str): 비디오 경로,
     caption(str): 생성된 캡션
     """
-    video_path = os.path.join(data_dir, vid_idx_table[video_id])
+    # video_path = os.path.join(data_dir, vid_idx_table[video_id])
+    #TODO: 경로 수정 필요
+    video_path = "/data/ephemeral/home/yt8m_Movieclips__7WnJtSpIP4.mp4"
 
     video_path = clipping_video(video_path, timestamp_start, timestamp_end)
     vision_json_path = save_json_clip(video_path, timestamp_start, timestamp_end)
@@ -364,12 +390,12 @@ def view_image(
     image_path(str): 비디오 경로,
     caption(str): 생성된 캡션
     """
-    video_path = os.path.join(YT8M_DIR, vid_idx_table[video_id])
+    # video_path = os.path.join(YT8M_DIR, vid_idx_table[video_id])
     #TODO: 경로 수정 필요
-    # video_path = "/data/ephemeral/home/yt8m_Movieclips__7WnJtSpIP4.mp4"
+    video_path = "/data/ephemeral/home/yt8m_Movieclips__7WnJtSpIP4.mp4"
     image_path = extract_frame(video_path, timestamp_start)
     print(image_path)
-    
+
     #TODO: 경로 수정 필요   
     # vision_json_path = os.path.join(data_dir, 'YT8M', 'Movieclips', 'test', 'labels', f'{video_id}.json')
     # base_name = '_'.join(video_id.split('_')[:-1])
@@ -468,7 +494,7 @@ def download_video(*videos:str) :
             print(f"⚠️ Invalid video path: {video_path}")
             continue  
 
-        vid_idx_table[f"external_{i+1}"] = save_video(video_path)
+        vid_idx_table[f"video{i+1}"] = save_video(video_path)
 
     # 1. Trimming 및 세그먼트 분할
     
@@ -549,9 +575,6 @@ def download_video(*videos:str) :
 
             gr.Info("✅ caption 생성 완료")
             print(f"video_id: {video_id}, base_name: {base_name}, vision_json_path: {vision_json_path}, speech_json_path: {speech_json_path}, summary_dir: {summary_dir}, caption: {caption}")
-
-        # 원본 파일 을 
-            
 
     if vid_idx_table:
         file_list_str = "\n".join([f"{key}: {os.path.basename(value)}" for key, value in vid_idx_table.items()])
