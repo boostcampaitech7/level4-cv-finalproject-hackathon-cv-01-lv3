@@ -4,7 +4,7 @@ import gradio as gr
 import shutil
 import ffmpeg
 import subprocess
-from database import run
+# from database import run
 import asyncio
 # 시스템 경로를 추가하여 상위 경로 접근 가능하도록 변경
 import sys
@@ -12,7 +12,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.append(project_root)
 
 from utils.video_load import VideoLoad
-captioner = VideoLoad(project_root)
+captioner = VideoLoad()
 
 from translate import translation
 
@@ -277,7 +277,8 @@ def process_base_info(*args:str) -> tuple:
 
 
 
-def download_video(*videos:str) -> Union[str, gr.components.Info]:
+def download_video(*videos:str) :
+    global vid_idx_table
     """
     비디오를 다운로드하여 저장.
     저장된 파일 목록을 반환.
@@ -304,6 +305,59 @@ def download_video(*videos:str) -> Union[str, gr.components.Info]:
 
         vid_idx_table[f"video{i+1}"] = save_video(video_path)
 
+    # 1. Trimming 및 세그먼트 분할
+    from data.utils.clip_video import split_video_into_scenes
+    import json
+    
+    # 경로 설정
+    base_dir = "./data/download_video"
+    clip_dir = os.path.join(base_dir, "clips")
+    label_dir = os.path.join(base_dir, "labels")
+    stt_dir = os.path.join(base_dir, "stt")
+    summary_dir = os.path.join(base_dir, "summary")
+    
+    # 디렉토리 생성
+    os.makedirs(clip_dir, exist_ok=True)
+    os.makedirs(label_dir, exist_ok=True)
+    os.makedirs(stt_dir, exist_ok=True)
+    os.makedirs(summary_dir, exist_ok=True)
+
+    # 각 비디오 처리 파이프라인
+    for vid_key, video_path in vid_idx_table.items():
+        # 1. Scene 분할
+        split_video_into_scenes(
+            video_path,
+            output_json_dir=label_dir,
+            segments_dir=clip_dir
+        )
+        
+        # 2. STT 처리
+        try:
+            stt_result = send_for_stt(video_path)
+            stt_path = os.path.join(stt_dir, f"{os.path.basename(video_path)}.json")
+            with open(stt_path, 'w') as f:
+                json.dump(stt_result, f)
+        except Exception as e:
+            print(f"STT 처리 실패: {str(e)}")
+            
+        # # 3. Summary 생성
+        try:
+            summary_result = send_for_summary(video_path)
+            summary_path = os.path.join(summary_dir, f"{os.path.basename(video_path)}.json")
+            with open(summary_path, 'w') as f:
+                json.dump(summary_result, f)
+        except Exception as e:
+            print(f"요약 생성 실패: {str(e)}")
+            
+        # 4. 캡션 생성 (수정 필요)
+        clip_files = [f for f in os.listdir(clip_dir) if f.startswith(os.path.basename(video_path))]
+        for clip_file in clip_files:
+            clip_path = os.path.join(clip_dir, clip_file)
+            media_tensor = captioner.load_media(clip_path, media_type='video')
+            caption = captioner.generate_caption(media_tensor, 'video', "Describe the video", "Carefully watch the video")
+            
+            # 캡션 저장 로직 추가 필요
+
     if vid_idx_table:
         file_list_str = "\n".join([f"{key}: {os.path.basename(value)}" for key, value in vid_idx_table.items()])
         gr.Info("✅ 동영상 제출이 완료되었습니다!")
@@ -313,13 +367,14 @@ def download_video(*videos:str) -> Union[str, gr.components.Info]:
         return ""
 
 
-def clear_videos() -> Union[str, gr.components.Info]:
+def clear_videos():
     """
     SAVE_DIR에 저장된 동영상을 모두 삭제
     
     returns:
     gr.Info(-> Union[str, gr.components.Info]): 동영상 삭제 관련 메시지
     """
+    global vid_idx_table
     SAVE_DIR = "./data/download_video"
     if os.path.exists(SAVE_DIR):
         for file in os.listdir(SAVE_DIR):
@@ -377,7 +432,7 @@ with gr.Blocks() as demo:
                 clear_btn = gr.Button("삭제", size='lg')
         
         # 제출 버튼 클릭 시, 업로드된 비디오를 다운로드
-        submit_btn.click(fn=download_video, inputs=[*video_inputs], outputs=[file_list_output]) 
+        submit_btn.click(fn=download_video, inputs=[*video_inputs], outputs=[file_list_output])
         # 삭제 버튼 클릭 시, 업로드된 비디오 삭제
         clear_btn.click(fn=clear_videos, outputs=[file_list_output])
     # V2T 탭    
@@ -430,6 +485,37 @@ with gr.Blocks() as demo:
                 valid_videos = [v for v in videos if v is not None]
                 return f"처리된 동영상 개수: {len(valid_videos)}"
 
+# 외부 서버 요청을 위한 헬퍼 함수 (구현 필요)
+import requests
+from typing import Dict, Any
+
+def send_for_stt(video_path: str) -> Dict[str, Any]:
+    """STT 서버로 비디오 전송 (10.28.224.201:30956)"""
+    url = "http://10.28.224.201:30956/whisper"
+    
+    with open(video_path, 'rb') as video_file:
+        files = {'video': (os.path.basename(video_path), video_file, 'video/mp4')}
+        response = requests.post(url, files=files, timeout=30)
+    
+    if response.status_code != 200:
+        raise Exception(f"STT 서버 오류: {response.text}")
+    
+    return response.json()
+
+def send_for_summary(video_path: str) -> Dict[str, Any]:
+    """요약 서버로 비디오 전송 (구현 필요)"""
+    # 실제 요약 서버 엔드포인트로 변경 필요
+    url = "http://10.28.224.201:30955/summerize"
+    
+    try:
+        with open(video_path, 'rb') as video_file:
+            files = {'video': (os.path.basename(video_path), video_file, 'video/mp4')}
+            response = requests.post(url, files=files, timeout=30)
+        
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        raise Exception(f"요약 생성 실패: {str(e)}")
 
 if __name__ == "__main__":
     demo.launch()

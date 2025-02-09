@@ -8,9 +8,9 @@ import numpy as np
 from PIL import Image
 from torchvision import transforms as T
 import cv2
-from decord import VideoReader, cpu
-
-from transformers import AutoTokenizer
+from decord import VideoReader, cpu 
+from torchvision import transforms
+from transformers import AutoTokenizer, AutoModel   
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(project_root)
@@ -18,41 +18,26 @@ sys.path.append(project_root)
 from model.sources.model_config import VideoChat2Config
 from model.sources.modeling_videochat2 import InternVideo2_VideoChat2
 
-from .model_load import ModelLoad
-
 class VideoLoad:
-    def __init__(self, current_dir):
-        self.config = VideoChat2Config.from_json_file(os.path.join(project_root, "model/configs/config.json"))
-        # self.model = ModelLoad(project_root)
-        model_path = os.path.join(project_root, "model/weights")
+    def __init__(self):
+        self.model_path = "OpenGVLab/InternVL2_5-8B-MPO"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.tokenizer = None
+        self.model = None
     
-        # 토크나이저 초기화 (Mistral-7B)
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.config.model_config.llm.pretrained_llm_path,
+            self.model_path,
             trust_remote_code=True,
-            use_fast=False,
-            token=os.getenv('HF_TOKEN')
+            use_fast=False
         )
-        self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-
-        # 모델 초기화
-        if torch.cuda.is_available():
-            self.model = InternVideo2_VideoChat2.from_pretrained(
-                model_path,
-                config=self.config,
-                torch_dtype=torch.bfloat16,
-                trust_remote_code=True
-            ).cuda()
- 
-        else:
-            self.model = InternVideo2_VideoChat2.from_pretrained(
-                model_path,
-                config=self.config,
-                torch_dtype=torch.bfloat16,
-                trust_remote_code=True
-            )
-        self.model.eval()
         
+        self.model = AutoModel.from_pretrained(
+            self.model_path,
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            use_flash_attn=False,
+            trust_remote_code=True
+        ).eval().to(self.device)
 
     def load_media(self, media_path, media_type='video', num_segments=8, resolution=224, hd_num=6):
         """비디오 로드 및 전처리"""
@@ -82,7 +67,7 @@ class VideoLoad:
             image = image.permute(2, 0, 1)  # (C, H, W)
             image = image.unsqueeze(0)  # 배치 차원 추가
             return image
-
+    
     def _get_frame_indices(self, num_frames, num_segments):
         """균일한 간격으로 프레임 인덱스 추출"""
         seg_size = float(num_frames - 1) / num_segments
@@ -102,31 +87,29 @@ class VideoLoad:
         
         return transform(frames)
 
-    def generate_caption(self, video_tensor, media_type='video', user_prompt='', instruction=''):
-        """비디오 캡션 생성"""
+    def preprocess_frames(self, frames: torch.Tensor) -> torch.Tensor:
+        """InternVL2.5에 맞춘 프레임 전처리"""
+        transform = transforms.Compose([
+            transforms.Resize((448, 448)),  # 모델 입력 크기 변경
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        return transform(frames.float() / 255.0)
 
-        # 비디오 로드 및 전처리
- 
+    def generate_caption(self, video_tensor, media_type='video', user_prompt=''):
         if torch.cuda.is_available():
-            video_tensor = video_tensor.cuda()
+            video_tensor = video_tensor.to(self.device, dtype=torch.bfloat16)
 
-        # 채팅 히스토리 초기화
-        chat_history = []
-        
-        # 캡션 생성
-        response, _ = self.model.chat(
+        # 모델 입력 형식에 맞게 변환
+        pixel_values = self.preprocess_frames(video_tensor)
+        num_patches_list = [video_tensor.shape[0]]  # 프레임 수 기반 패치 리스트 생성
+
+        # 모델 추론
+        response = self.model.chat(
             tokenizer=self.tokenizer,
-            msg='',
-            user_prompt=user_prompt,
-            instruction=instruction,
-            media_type=media_type,
-            media_tensor=video_tensor,
-            chat_history=chat_history,
-            return_history=True,
-            generation_config={
-                'do_sample': False,
-                'max_new_tokens': 512,
-            }
+            pixel_values=pixel_values,
+            num_patches_list=num_patches_list,
+            question=user_prompt,
+            generation_config={'max_new_tokens': 512, 'do_sample': False}
         )
         
         return response
