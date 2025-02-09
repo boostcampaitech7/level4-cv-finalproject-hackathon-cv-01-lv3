@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import gradio as gr
 import shutil
@@ -6,6 +7,8 @@ import ffmpeg
 import subprocess
 from database import run
 import asyncio
+import cv2
+
 # 시스템 경로를 추가하여 상위 경로 접근 가능하도록 변경
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -40,7 +43,7 @@ def save_video(video: str) -> str:
 
     return abs_path
 
-import cv2
+
 def extract_frame(video_path: str, timestamp: str) -> str:
     """
     비디오를 받아서 프레임 추출 후 저장 후에 경로 반환
@@ -52,13 +55,15 @@ def extract_frame(video_path: str, timestamp: str) -> str:
     returns: 
     output_path (str): 추출된 프레임 절대 경로
     """
-    output_path = os.path.abspath(f"./data/tmp/{video_path[-15:-4]}_frame.jpg")
+    # 비디오 파일 이름 추출 (확장자 제거)
+    video_name = os.path.splitext(os.path.basename(video_path))[0]
     
-    # 타임스탬프를 초 단위로 변환
+    # 프레임 저장 경로
+    output_path = os.path.abspath(f"./data/tmp/{video_name}_frame.jpg")
+    
     h, m, s = map(int, timestamp.split(':'))
     total_seconds = h * 3600 + m * 60 + s
     
-    # OpenCV를 이용한 프레임 추출
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError("비디오 파일을 열 수 없습니다")
@@ -75,6 +80,7 @@ def extract_frame(video_path: str, timestamp: str) -> str:
     cap.release()
     return output_path
 
+
 def clipping_video(video_path: str, start: str, end: str) -> str:
     """
     args: 
@@ -85,7 +91,11 @@ def clipping_video(video_path: str, start: str, end: str) -> str:
     returns: 
     clip_path (str): 클리핑된 비디오 절대 경로
     """
-    clip_path = os.path.abspath(f"./data/tmp/{video_path[-15:-4]}_clipped_video.mp4")
+    
+    clip_name = os.path.splitext(os.path.basename(video_path))[0]
+    
+    clip_path = os.path.abspath(f"./data/tmp/{clip_name}_clipped_video.mp4")
+    
     os.makedirs(os.path.dirname(clip_path), exist_ok=True) 
     
     if os.path.exists(clip_path):
@@ -100,6 +110,7 @@ def clipping_video(video_path: str, start: str, end: str) -> str:
         audio_bitrate='128k'
     ).run()
     return clip_path   
+
 
 def update_video(video_path: str) -> dict:
     """
@@ -116,6 +127,7 @@ def update_video(video_path: str) -> dict:
     else:
         print(f"Error: {video_path} 파일이 존재하지 않습니다.")
         return gr.update(value="")  
+
 
 def update_image(image_path: str) -> dict:
     """
@@ -180,6 +192,7 @@ def view_video(
 
     caption = captioner.generate_caption(media_tensor, media_type, user_prompt, instruction)
     return update_video(video_path), caption
+
 
 def view_image(
         video_id = None,
@@ -248,6 +261,7 @@ def process_video_info(*args:str) -> tuple:
     
     return video_id, timestamp, update_video(video_path)
 
+
 def process_base_info(*args:str) -> tuple:
     """
     T2V 기본 평가를 위한 비디오 처리 함수
@@ -277,7 +291,7 @@ def process_base_info(*args:str) -> tuple:
 
 
 
-def download_video(*videos:str) -> Union[str, gr.components.Info]:
+def download_video(*videos:str):
     """
     비디오를 다운로드하여 저장.
     저장된 파일 목록을 반환.
@@ -313,9 +327,11 @@ def download_video(*videos:str) -> Union[str, gr.components.Info]:
         return ""
 
 
-def clear_videos() -> Union[str, gr.components.Info]:
+def clear_videos():
     """
     SAVE_DIR에 저장된 동영상을 모두 삭제
+    
+    args: None
     
     returns:
     gr.Info(-> Union[str, gr.components.Info]): 동영상 삭제 관련 메시지
@@ -332,31 +348,41 @@ def clear_videos() -> Union[str, gr.components.Info]:
         return gr.Info("⚠️ 삭제할 동영상이 없습니다.")
 
 
-###### Interface ######
+def save_json_video(video_id: str, start_time: str, end_time: str, caption: str):
+    video_name=os.path.splitext(os.path.basename(vid_idx_table[video_id]))[0]
+    
+    json_data = {
+        video_name: {
+            "start_time": start_time,
+            "end_time": end_time,
+            "caption": caption
+        }
+    }
+    
+    json_path = os.path.join("./data", f"{video_name}.json")
+    
+    with open(json_path, 'w', encoding='utf-8') as json_file:
+        json.dump(json_data, json_file, ensure_ascii=False, indent=4)
+    
+    return gr.Info(f"✅ JSON 파일이 저장되었습니다.")
 
-# 비디오 인터페이스
-video_interface = gr.Interface(
-    fn=view_video,
-    # 비디오 입력
-    inputs=[gr.Textbox(label="Video ID"), gr.Textbox(label="Timestamp_start(HH:MM:SS)", placeholder="00:00:00"), 
-            gr.Textbox(label="Timestamp_end(HH:MM:SS)", placeholder="00:00:00")
-            ],
-    # 비디오 출력
-    outputs=[
-                       gr.Video(label="Video"), gr.Textbox(label="Generated Caption")
-                    ]
-)
+def save_json_image(video_id: str, timestamp:str, caption: str):
+    image_name=os.path.splitext(os.path.basename(vid_idx_table[video_id]))[0]
+    
+    json_data = {
+        image_name: {
+            "timestamp": timestamp,
+            "caption": caption
+        }
+    }
+    
+    json_path = os.path.join("./data", f"{image_name}.json")
+    
+    with open(json_path, 'w', encoding='utf-8') as json_file:
+        json.dump(json_data, json_file, ensure_ascii=False, indent=4)
+    
+    return gr.Info(f"✅ JSON 파일이 저장되었습니다.")
 
-# 이미지 인터페이스
-image_interface = gr.Interface(
-    fn=view_image,
-    # 이미지 입력
-    inputs=[gr.Textbox(), gr.Textbox(label="Timestamp(HH:MM:SS)", placeholder="00:00:00")],
-    # 이미지 출력
-    outputs=[
-                        gr.Image(label="Image"), gr.Textbox(label="Generated Caption")
-                    ]
-)
 
 ###### demo ######
 with gr.Blocks() as demo:
@@ -384,9 +410,76 @@ with gr.Blocks() as demo:
     with gr.Tab("Video to Text"):
         with gr.Tabs():
             with gr.Tab("기본 평가"):
-                image_interface.render()
+                with gr.Row(2) as columns:
+                    with gr.Column() as input_column:
+                        video_id_input = gr.Textbox(label="Video ID")
+                        timestamp_input = gr.Textbox(label="Timestamp(HH:MM:SS)", placeholder="00:00:00")
+                        with gr.Row(2):
+                            clear_btn = gr.Button("Clear", size='lg')
+                            submit_btn = gr.Button("submit", size='lg')
+                    with gr.Column() as output_column:
+                        image_output = gr.Image(label="Generated Image")
+                        caption_output = gr.Textbox(label="Generated Caption")
+
+                        json_btn = gr.Button("JSON으로 저장", size='lg')
+                        json_output = gr.Info()
+                        
+                    # 클리어 버튼 클릭 시, 입력 초기화
+                    clear_btn.click(
+                        fn=lambda: ("", "", None, ""),  # 빈 값 반환 (이미지는 None)
+                        inputs=[],
+                        outputs=[video_id_input, timestamp_input, image_output, caption_output]
+                    )
+                    
+                    # 제출 버튼 클릭 이벤트
+                    submit_btn.click(
+                        fn=view_image, 
+                        inputs=[video_id_input, timestamp_input], 
+                        outputs=[image_output, caption_output]
+                    )
+                    
+                    # JSON 저장 버튼 클릭 이벤트
+                    json_btn.click(
+                        fn=save_json_image, 
+                        inputs=[video_id_input, timestamp_input, caption_output], 
+                        outputs=json_output
+                    )
             with gr.Tab("가산점 평가"):
-                video_interface.render()
+                with gr.Row(2) as columns:
+                    with gr.Column() as input_column:
+                        video_id_input = gr.Textbox(label="Video ID")
+                        start_time_input = gr.Textbox(label="Start time(HH:MM:SS)", placeholder="00:00:00")
+                        end_time_input = gr.Textbox(label="End time(HH:MM:SS)", placeholder="00:00:00")
+                        with gr.Row(2):
+                            clear_btn = gr.Button("Clear", size='lg')
+                            submit_btn = gr.Button("submit", size='lg')
+                    with gr.Column() as output_column:
+                        video_output = gr.Video(label="Generated Clip")
+                        caption_output = gr.Textbox(label="Generated Caption")
+
+                        json_btn = gr.Button("JSON으로 저장", size='lg')
+                        json_output = gr.Info()
+                        
+                    # 클리어 버튼 클릭 시, 입력 초기화
+                    clear_btn.click(
+                        fn=lambda: ("", "", None, ""),  # 빈 값 반환 (이미지는 None)
+                        inputs=[],
+                        outputs=[video_id_input, start_time_input, end_time_input, caption_output]
+                    )
+                    
+                    # 제출 버튼 클릭 이벤트
+                    submit_btn.click(
+                        fn=view_video, 
+                        inputs=[video_id_input, start_time_input, end_time_input], 
+                        outputs=[video_output, caption_output]
+                    )
+                    
+                    # JSON 저장 버튼 클릭 이벤트
+                    json_btn.click(
+                        fn=save_json_video, 
+                        inputs=[video_id_input, start_time_input, end_time_input, caption_output], 
+                        outputs=json_output
+                    )
     # T2V 탭
     with gr.Tab("Text to Video"):
         with gr.Tabs():
