@@ -11,7 +11,7 @@ import asyncio
 import sys
 from utils.InternVL_model import InternVL
 from utils.InternVL_model import load_image
-
+from deepl_trans import translate_deepl
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(project_root)
 
@@ -31,14 +31,17 @@ import json
 # 비디오 경로를 저장하기 위한 딕셔너리
 vid_idx_table = {}
 
+# 외부데이터를 위한 딕셔너리
+external_idx_table = {}
+
 def set_video_mapping():
     # 비디오 경로를 저장하기 위한 딕셔너리
     global vid_idx_table
     mapping_txt=  '/data/ephemeral/home/hanseonglee_demo/level4-cv-finalproject-hackathon-cv-01-lv3/demo/video_ids.txt'
     with open(mapping_txt, "r") as f:
         for line in f:
-            video_id, video_path = line.strip().split()
-            vid_idx_table[video_id] = video_path
+            video_id, video_path = line.strip().split(':')
+            vid_idx_table[video_id] = video_path + ".mp4"
     return vid_idx_table
 
 
@@ -212,11 +215,11 @@ def clipping_video(video_path: str, start: str, end: str) -> str:
     
     ffmpeg.input(video_path, ss=start, to=end).output(
         clip_path, 
-        vcodec='libx264', 
-        crf=23, 
-        preset='fast', 
+        # vcodec='libx264', 
+        # crf=23, 
+        # preset='fast', 
         # acodec='aac', 
-        audio_bitrate='128k'
+        # audio_bitrate='128k'
     ).run()
     return clip_path   
 
@@ -281,17 +284,23 @@ def view_video(
     video_path(str): 비디오 경로,
     caption(str): 생성된 캡션
     """
-    video_path = os.path.join(data_dir, vid_idx_table[video_id])
+    video_path = os.path.join(YT8M_DIR,"movieclips", vid_idx_table[video_id])
 
     video_path = clipping_video(video_path, timestamp_start, timestamp_end)
     vision_json_path = save_json_clip(video_path, timestamp_start, timestamp_end)
 
+    print(f"\n\n[DEBUG] video_path: {video_path}")
+    print(f"[DEBUG] vision_json_path: {vision_json_path}")
 
     #TODO: 경로 수정 필요
     # base_name "/data/ephemeral/home/yt8m_Movieclips__7WnJtSpIP4.mp4" -> "yt8m_Movieclips__7WnJtSpIP4/tmp"
     base_name = os.path.splitext(os.path.basename(video_path))[0]
+    print(f"\n\n[DEBUG] base_name: {base_name}")
     tmp_dir = os.path.join(base_name, "tmp")
     os.makedirs(tmp_dir, exist_ok=True)
+    print(f"\n\n[DEBUG] tmp_dir: {tmp_dir}")
+
+
 
     # vision_json_path = os.path.join(data_dir, 'YT8M', 'Movieclips', 'test', 'labels', f'{video_id}.json')
     # base_name = '_'.join(video_id.split('_')[:-1])
@@ -299,10 +308,11 @@ def view_video(
     # summary_dir = os.path.join(data_dir, 'YT8M', 'Movieclips', 'test', 'summary')
     # video_name = video_id
     # TODO: video captioning 필요
+    stt_dir = os.path.join(tmp_dir, "stt")
+    summary_dir = os.path.join(tmp_dir, "summary")
+    os.makedirs(stt_dir, exist_ok=True)
+    os.makedirs(summary_dir, exist_ok=True)
 
-
-    # JSON 생성
-    base_name = os.path.splitext(os.path.basename(video_path))[0]
     try:
         stt_result = send_for_stt(video_path)
         stt_path = os.path.join(stt_dir, f"{base_name}.json")
@@ -327,25 +337,38 @@ def view_video(
         media_type='video',
         #label 위치
         vision_caption_json_path=vision_json_path,
-        speech_caption_json_path='/data/ephemeral/home/data/download_video/test/stt/yt8m_Movieclips_8w_naC0saGI.json',
-        summary_dir='/data/ephemeral/home/data/download_video/test/summary',
-        video_name='yt8m_Movieclips_8w_naC0saGI.json'
+        speech_caption_json_path=stt_path,
+        summary_dir=summary_dir,
+        video_name=base_name
     )
-    return update_video(video_path), caption
+    ko_caption = translate_deepl(caption, 'en', 'ko')
+    return update_video(video_path), ko_caption
 
 def process_video_info(input_text):
-    # best_match, segment_name = run(input_text)
-    
-    # video_path = 
-    # print(f"video_path: {video_path}")
-    # return best_match, update_video(video_path)
-    pass
+    """
+    input_text: 검색어
+    """
+    input_text = translate_deepl(input_text, 'ko', 'en')
+    best_match, segment_name = run(input_text)
+    print(f"\n\n[DEBUG] best_match: {best_match}")
+    print(f"[DEBUG] segment_name: {segment_name}")
+    # yt8m_Movieclips_le6AAhqa_8U_001 -> yt8m_Movieclips_le6AAhqa_8U
+    base_name = '_'.join(segment_name.split('_')[:-1])
+    print(f"\n\n[DEBUG] base_name: {base_name}")
+    # base_name + ".mp4"
+    video_name = base_name + ".mp4"
+    video_path = os.path.join(YT8M_DIR, "movieclips", video_name)
+    print(f"\n\n[DEBUG] video_path: {video_path}")
+
+    _, start_time, end_time, _ = best_match.split(',')
+    timestamp = start_time[-8:] + " ~ " + end_time[-8:]  # HH:MM:SS 형식
+    return best_match, timestamp, update_video(video_path)
 
 def view_image(
         video_id = None,
         timestamp_start = 0,
         media_type = 'image',
-        resolution = 224,
+        resolution = 224,   
         num_segments = 1
     ) -> tuple:
     """
@@ -364,12 +387,14 @@ def view_image(
     image_path(str): 비디오 경로,
     caption(str): 생성된 캡션
     """
-    video_path = os.path.join(YT8M_DIR, vid_idx_table[video_id])
+    video_path = os.path.join(YT8M_DIR,"movieclips", vid_idx_table[video_id])
+
+    print(f"video_path: {video_path}")
     #TODO: 경로 수정 필요
-    # video_path = "/data/ephemeral/home/yt8m_Movieclips__7WnJtSpIP4.mp4"
+    print(f"video_id: {video_id}")
     image_path = extract_frame(video_path, timestamp_start)
     print(image_path)
-    
+
     #TODO: 경로 수정 필요   
     # vision_json_path = os.path.join(data_dir, 'YT8M', 'Movieclips', 'test', 'labels', f'{video_id}.json')
     # base_name = '_'.join(video_id.split('_')[:-1])
@@ -383,35 +408,11 @@ def view_image(
         media_tensor=media_tensor,
         media_type="image"
     )
-    return update_image(image_path), caption
+    ko_caption = translate_deepl(caption, 'en', 'ko')
+    return update_image(image_path), ko_caption
 
 
-def process_video_info(*args:str) -> tuple:
-    """
-    T2V 가산점 평가를 위한 비디오 처리 함수
-    
-    args(str): 비디오 경로(10개), 한국어 검색어
-    
-    returns:
-    video_id(str): 비디오 아이디,
-    timestamp(str): 비디오 구간,
-    update_video(dict): 비디오 경로 업데이트
-    """
-    input_videos = args[:-1]
-    # 한국어로 번역
-    input_text = asyncio.run(translation(args[-1],'ko'))
 
-    valid_videos = [v for v in input_videos if v is not None]
-    print(f"처리된 동영상 개수: {len(valid_videos)}")
-
-    best_match, video_path = run(input_text)
-    print(f"video_path: {video_path}")
-
-    video_id, start_time, end_time, _ = best_match.split(',')
-    video_id=video_id[-15:-4]
-    timestamp = start_time[-8:]+" ~ "+end_time[-8:]
-    
-    return video_id, timestamp, update_video(video_path)
 
 def process_base_info(*args:str) -> tuple:
     """
@@ -469,13 +470,12 @@ def download_video(*videos:str) :
             continue  
 
         vid_idx_table[f"external_{i+1}"] = save_video(video_path)
+        external_idx_table[f"external_{i+1}"] = video_path
 
     # 1. Trimming 및 세그먼트 분할
     
     # 경로 설정
     base_dir = EXTERNAL_DIR
-    #TODO 경로 지정
-
 
     base_dir = os.path.join(base_dir, "data", "download_video")
     clip_dir = os.path.join(base_dir,'test',"clips")
@@ -490,7 +490,7 @@ def download_video(*videos:str) :
     os.makedirs(summary_dir, exist_ok=True)
 
     # 각 비디오 처리 파이프라인
-    for vid_key, video_path in vid_idx_table.items():
+    for vid_key, video_path in external_idx_table.items():
         # 1. Scene 분할
         split_video_into_scenes(
             video_path,
@@ -550,11 +550,9 @@ def download_video(*videos:str) :
             gr.Info("✅ caption 생성 완료")
             print(f"video_id: {video_id}, base_name: {base_name}, vision_json_path: {vision_json_path}, speech_json_path: {speech_json_path}, summary_dir: {summary_dir}, caption: {caption}")
 
-        # 원본 파일 을 
-            
 
-    if vid_idx_table:
-        file_list_str = "\n".join([f"{key}: {os.path.basename(value)}" for key, value in vid_idx_table.items()])
+    if external_idx_table:
+        file_list_str = "\n".join([f"{key}: {os.path.basename(value)}" for key, value in external_idx_table.items()])
         gr.Info("✅ 동영상 제출이 완료되었습니다!")
         return file_list_str
     else:
@@ -707,20 +705,20 @@ with gr.Blocks() as demo:
     # T2V 탭
     with gr.Tab("Text to Video"):
         with gr.Tabs():
-            with gr.Tab("기본 평가"):
-                with gr.Row(2) as columns:
-                    with gr.Column() as input_column:
-                        gr.Markdown("### 비디오 입력 설정")
-                        input_text = gr.Textbox(label="검색어 입력", lines=2)
-                        submit_btn = gr.Button("처리 시작", size='lg')
+            # with gr.Tab("기본 평가"):
+            #     with gr.Row(2) as columns:
+            #         with gr.Column() as input_column:
+            #             gr.Markdown("### 비디오 입력 설정")
+            #             input_text = gr.Textbox(label="검색어 입력", lines=2)
+            #             submit_btn = gr.Button("처리 시작", size='lg')
 
-                    with gr.Column():
-                        gr.Markdown("### 처리 결과")
-                        output_id = gr.Textbox(label="Video ID")
-                        output_timestamp = gr.Textbox(label="Timestamp")
-                        output_video = gr.Video(label="결과 비디오")
-                # 처리 시작 버튼 클릭 시, 활성화된 비디오만 입력으로 사용
-                submit_btn.click(fn=process_base_info, inputs=[*video_inputs, input_text], outputs=[output_id, output_timestamp, output_video])
+            #         with gr.Column():
+            #             gr.Markdown("### 처리 결과")
+            #             output_id = gr.Textbox(label="Video ID")
+            #             output_timestamp = gr.Textbox(label="Timestamp")
+            #             output_video = gr.Video(label="결과 비디오")
+            #     # 처리 시작 버튼 클릭 시, 활성화된 비디오만 입력으로 사용
+            #     submit_btn.click(fn=process_base_info, inputs=[*video_inputs, input_text], outputs=[output_id, output_timestamp, output_video])
                 
             with gr.Tab("가산점 평가"):
                 with gr.Row(2) as columns:
@@ -739,7 +737,7 @@ with gr.Blocks() as demo:
                         output_timestamp = gr.Textbox(label="Timestamp")
                         output_video = gr.Video(label="결과 비디오")
                 # 처리 시작 버튼 클릭 시, 활성화된 비디오만 입력으로 사용
-                submit_btn.click(fn=process_video_info, inputs=[*video_inputs, input_text], outputs=[output_id, output_timestamp, output_video])
+                submit_btn.click(fn=process_video_info, inputs=input_text, outputs=[output_id, output_timestamp, output_video])
 
                         
             # 비디오 처리 함수
@@ -780,4 +778,8 @@ def send_for_summary(video_path: str) -> Dict[str, Any]:
         raise Exception(f"요약 생성 실패: {str(e)}")
 
 if __name__ == "__main__":
-    demo.launch()
+    set_video_mapping()
+    demo.launch(
+        debug=True,       # 디버그 모드 활성화 (에러 상세 출력)
+        show_error=True,  # UI에 에러 직접 표시
+    )

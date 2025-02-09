@@ -220,6 +220,9 @@ def prefiltering(query_text: str):
 
 def run(query_text: str)-> tuple[str, str]:
     results, segment_name = search_videos(query_text)
+
+    print(f"\n\n[DEBUG] results: {results}")
+    print(f"[DEBUG] segment_name: {segment_name}")
     return results, segment_name
 
 def find_video(data_path: str, segment_name: str):  
