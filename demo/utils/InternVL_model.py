@@ -192,7 +192,7 @@ def main(data_path: str = '../../data', test_batch_size: int = 1, test_num_worke
     submission = pd.DataFrame(columns=['segment_name', 'start_time', 'end_time', 'caption', 'caption_ko'])
     # questions = '<image>\nPlease describe the image in detail.'
     summary_dir = os.path.join(data_path, 'YT8M', 'Movieclips', 'test', 'summary_json')
-    generation_config = dict(max_new_tokens=1024, do_sample=False)
+    generation_config = dict(max_new_tokens=512, do_sample=False)
     # set the max number of tiles in `max_num`
     before_time = time.time()
     for batch in tqdm(test_loader, desc="Processing", total=len(test_loader), unit="batch"):
@@ -318,7 +318,6 @@ class InternVL():
         try:
             genre, video_summary = load_summary_json(summary_dir, video_name)  # 순서 수정
         except Exception as e:
-            print(f"요약 로드 실패: {str(e)}")
             video_summary = "No summary available"
             genre = "Unknown"
 
@@ -331,11 +330,6 @@ class InternVL():
             print(f"음성 캡션 로드 실패: {str(e)}")
             speech = "No speech available"
 
-        # 디버깅용 로그 추가
-        print(f"\n=== 생성용 메타데이터 ===")
-        print(f"Video Summary: {video_summary}")
-        print(f"Genre: {genre}")
-        print(f"Speech: {speech[:200]}...")  # 처음 200자만 출력
 
         # 기존 프롬프트 구성 방식 유지
         video_prefix = ''.join([f'Frame{i+1}: <image>\n' for i in range(len(num_patches_list))])

@@ -5,6 +5,7 @@ import os
 import math
 from scenedetect import open_video, SceneManager, split_video_ffmpeg
 from scenedetect.detectors import ContentDetector
+import subprocess
 
 def split_video_into_scenes(video_path : str, threshold:float = 27.0, output_json_dir : str ="./video", segments_dir : str ="./segments"):
     """
@@ -26,8 +27,9 @@ def split_video_into_scenes(video_path : str, threshold:float = 27.0, output_jso
     #scene detection
     video = open_video(video_path)
     scene_manager = SceneManager()
-    scene_manager.add_detector(ContentDetector(threshold=threshold))
-    scene_manager.detect_scenes(video, show_progress=True)
+    scene_manager.auto_downscale = True
+    scene_manager.add_detector(ContentDetector(threshold=threshold, min_scene_len = 30))
+    scene_manager.detect_scenes(video, show_progress=True , frame_skip =1)
     scene_list = scene_manager.get_scene_list()
     #video_id 찾기
     video_id = os.path.splitext(os.path.basename(video_path))[0]
@@ -73,6 +75,44 @@ def split_video_into_scenes(video_path : str, threshold:float = 27.0, output_jso
             json.dump(json_data, json_file, indent=4)
 
         # print(f"{idx}'s seg JSON 파일 저장 완료: {seg_json_path}")
+
+def spllit_video_ffmpeg(video_path: str, output_json_dir: str = "./video", segments_dir: str = "./segments"):
+    """FFmpeg를 사용해 영상을 4등분으로 분할하고 메타데이터 생성"""
+    # 비디오 전체 길이 확인
+    video_id = os.path.splitext(os.path.basename(video_path))[0]
+    
+    # FFprobe로 비디오 길이 추출
+    cmd = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{video_path}"'
+    total_duration = float(subprocess.getoutput(cmd))
+    segment_duration = total_duration / 3
+
+    os.makedirs(segments_dir, exist_ok=True)
+    os.makedirs(output_json_dir, exist_ok=True)
+
+    for i in range(3):
+        start_time = i * segment_duration
+        end_time = (i+1) * segment_duration if i < 3 else total_duration
+        
+        # FFmpeg로 분할
+        output_path = os.path.join(segments_dir, f"{video_id}_part{i+1}.mp4")
+        cmd = (
+            f'ffmpeg -ss {start_time} -i "{video_path}" '
+            f'-t {segment_duration} -map 0 -c copy "{output_path}" -y'
+        )
+        subprocess.call(cmd, shell=True)
+
+        # JSON 메타데이터 생성
+        seg_id = f"{video_id}_part{i+1}"
+        json_data = {
+            seg_id: {
+                "start_time": f"{int(start_time//3600):02}:{int((start_time%3600)//60):02}:{int(start_time%60):02}",
+                "end_time": f"{int(end_time//3600):02}:{int((end_time%3600)//60):02}:{int(end_time%60):02}",
+                "caption": "nan"
+            }
+        }
+        
+        with open(os.path.join(output_json_dir, f"{seg_id}.json"), 'w') as f:
+            json.dump(json_data, f, indent=4)
 
 # def main():
 #     video_path ="./video/video1.mp4"  # video_path
