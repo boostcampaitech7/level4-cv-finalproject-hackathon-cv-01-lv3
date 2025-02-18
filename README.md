@@ -8,6 +8,7 @@
 > 본 프로젝트는 **장면별 텍스트 변환(V2T, Video-to-Text)** 과 **텍스트 기반 장면 검색 기능(T2V , Text-to-Video)** 을 통해<br>
 >사용자가 원하는 특정 장면 검색이 가능하도록 하였습니다.   
 
+
 ## 🎯 주요 기능  
 
 ### 📺 **Video-to-Text (V2T)**   
@@ -39,9 +40,15 @@
 ![image](https://github.com/user-attachments/assets/8330ef98-a8ed-424c-8cb9-88bd0135050f)
 
 ## 🎬 Demo 
-### V2T ( 임시 img)
+
+### Demo Page (GPU 리소스로 인해 ~2/28 까지만 제공됩니다)
+🌐 [실시간 데모 체험하기](https://affecting-rl-tend-kg.trycloudflare.com/)
+
+
+
+### V2T 
 ![image](https://github.com/user-attachments/assets/8d586e7d-092c-42f2-9979-e1c8789e5661)
-### T2V ( 임시 img)
+### T2V 
 ![image](https://github.com/user-attachments/assets/8384e9d7-234f-4028-90e7-785c6a6711a7)
 
 ---
