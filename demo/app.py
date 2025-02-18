@@ -271,10 +271,6 @@ def view_video(
         video_id = None,
         timestamp_start = 0,
         timestamp_end = 0,
-        media_type = 'video',
-        num_segments = 8,
-        resolution = 224,
-        hd_num = 6
     ) -> tuple:
     """
     비디오 아이디를 받아서 비디오를 반환
@@ -283,10 +279,6 @@ def view_video(
     video_id(str),
     timestamp_start(int): 구간 시작 지점,
     timestamp_end(int): 구간 끝 지점,
-    media_type(str): image인지 video인지를 명시,
-    num_segments(int),
-    resolution(int),
-    hd_num(int): HD Frame 수,
     
     returns:
     video_path(str): 비디오 경로,
@@ -365,9 +357,6 @@ def process_video_info(input_text):
 def view_image(
         video_id = None,
         timestamp_start = 0,
-        media_type = 'image',
-        resolution = 224,   
-        num_segments = 1
     ) -> tuple:
     """
     이미지 아이디를 받아서 이미지를 반환
@@ -375,11 +364,6 @@ def view_image(
     args:
     video_id(str),
     timestamp_start(int): 구간 시작 지점,
-    timestamp_end(int): 구간 끝 지점,
-    media_type(str): image인지 video인지를 명시,
-    num_segments(int),
-    resolution(int),
-    hd_num(int): HD Frame 수,
     
     returns:
     image_path(str): 비디오 경로,
