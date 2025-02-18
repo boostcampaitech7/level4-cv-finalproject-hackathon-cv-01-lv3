@@ -4,8 +4,8 @@
 <img  src="https://img.shields.io/badge/jira-%230A0FFF.svg?style=for-the-badge&logo=jira&logoColor=white"> <img src= "https://img.shields.io/badge/confluence-%23172BF4.svg?style=for-the-badge&logo=confluence&logoColor=white">
 >본 프로젝트는 **7기 TVING 기업 연계 프로젝트**로,  
 >자연어를 활용한 **동영상 속 특정 장면 검색**을 목표로 하는 **Video Retrieval** 프로젝트 입니다. <br>
-> 기존 **메타데이터(제목, 태그, 키워드) 기반의 영상 검색** 방식은 영상 **구간별 검색**이 불가하다는 한계를 해결하고자,<br>
-> 본 프로젝트는 **장면별 텍스트 변환(V2T, Video-to-Text)** 과 **텍스트 기반 장면 검색 기능(T2V , Text-to-Video)** 을 통해<br>
+> 기존 **메타데이터(제목, 태그, 키워드) 기반의 영상 검색** 방식은 영상 **구간별 검색**이 불가하다는 한계를 해결하고자,
+> 본 프로젝트는 **장면별 텍스트 변환(V2T, Video-to-Text)** 과 **텍스트 기반 장면 검색 기능(T2V , Text-to-Video)** 을 통해
 >사용자가 원하는 특정 장면 검색이 가능하도록 하였습니다.   
 
 
