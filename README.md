@@ -97,6 +97,6 @@
 ![image](https://github.com/user-attachments/assets/81361036-72ed-4d82-92b9-06dc9ea01bff)
 
 ### 📚 추가 자료
-- 발표 영상
+- [발표 영상](https://www.youtube.com/watch?v=6SCfxhRcvjU)
 - [랩업 리포트 ](https://docs.google.com/document/d/1TtDpcJWyHGGwEDV9qbvnlARkm2NByundthXcdKrACmc/edit?usp=sharing)
 
