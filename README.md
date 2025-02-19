@@ -1,4 +1,4 @@
-# 🎥 영화 속 장면 검색을 위한 Video-to-Text / Text-to-Frame 프로젝트 
+# 🎥 자연어 기반 영화 장면 검색 프로젝트 
 <img src="https://img.shields.io/badge/python-3776AB?style=for-the-badge&logo=python&logoColor=white"> <img src ="https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white"> <img src ="https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi">
 <img src= "https://img.shields.io/badge/elasticsearch-%230377CC.svg?style=for-the-badge&logo=elasticsearch&logoColor=white">
 <img  src="https://img.shields.io/badge/jira-%230A0FFF.svg?style=for-the-badge&logo=jira&logoColor=white"> <img src= "https://img.shields.io/badge/confluence-%23172BF4.svg?style=for-the-badge&logo=confluence&logoColor=white">
