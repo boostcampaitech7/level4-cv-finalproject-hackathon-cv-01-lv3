@@ -2,10 +2,14 @@ import os
 import torch
 from elasticsearch import Elasticsearch
 import pandas as pd
+from transformers import AutoTokenizer, AutoModel
 from sentence_transformers import SentenceTransformer
 import time
+from tqdm import tqdm
+from torch import Tensor
 
-INDEX_NAME = "movieclips"
+INDEX_NAME = "exp_1"
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def get_elasticsearch_client():
     elasticsearch_url = os.environ.get('ELASTICSEARCH_URL')
@@ -22,16 +26,24 @@ def get_elasticsearch_client():
 class VideoCaption:
     def __init__(self):
         # 설정 로드
-        # SBERT 기반 모델 로드
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        # LENS-d8000 모델 로드
+        self.tokenizer = AutoTokenizer.from_pretrained("yibinlei/LENS-d8000").to(DEVICE)
+        self.model = AutoModel.from_pretrained("yibinlei/LENS-d8000").to(DEVICE)
         # 토크나이저 초기화
 
     def encode_text(self, text):
         """텍스트를 임베딩 벡터로 변환"""
+        inputs = self.tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512).to(DEVICE)
         with torch.no_grad():
-            text_embedding = self.model.cuda().encode(text, normalize_embeddings=True)
+            outputs = self.model(**inputs)
+            # LENS-d8000 모델의 경우 마지막 hidden state를 사용
+            text_embedding = self.pooling_func(outputs.last_hidden_state, inputs['attention_mask'])  # 평균을 사용해 벡터화
             
-            return text_embedding
+            return text_embedding.squeeze(0).cpu().numpy()
+    
+    def pooling_func(self, vecs: Tensor, pooling_mask: Tensor) -> Tensor:
+        # max-pooling을 사용
+        return torch.max(torch.log(1 + torch.relu(vecs)) * pooling_mask.unsqueeze(-1), dim=1).values
 
     def generate_embedding(self, caption):
         """embedding 생성"""
@@ -75,7 +87,7 @@ def create_index():
                 "end_time": {"type": "keyword"},
                 "caption": {"type": "text"},
                 "caption_ko": {"type": "text"},
-                "caption_embedding": {"type": "dense_vector", "dims": 384}
+                "caption_embedding": {"type": "dense_vector", "dims": 8000}
             }
         }
     }
@@ -90,7 +102,7 @@ def save_from_csv(csv_path: str):
     df = pd.read_csv(csv_path)
     
     
-    for _, row in df.iterrows():
+    for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing", unit="row"):
         # 이미 존재하는 segment_name인지 확인
         search_result = client.search(
             index=INDEX_NAME,

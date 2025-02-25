@@ -6,6 +6,7 @@ from ..sources.modeling_videochat2 import InternVideo2_VideoChat2
 import torch.nn.functional as F
 from elasticsearch import Elasticsearch
 import pandas as pd
+import time
 
 def get_elasticsearch_client():
     elasticsearch_url = os.environ.get('ELASTICSEARCH_URL')
@@ -171,6 +172,7 @@ def save_from_csv(csv_path: str):
             continue
 
 def search_videos(query_text: str):
+    
     client = get_elasticsearch_client()
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
