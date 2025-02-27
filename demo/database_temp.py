@@ -15,7 +15,7 @@ import onnxruntime as ort
 # main()
 
 
-INDEX_NAME = "movieclips"
+INDEX_NAME = "lens-d4000"
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -36,7 +36,6 @@ class VideoCaption:
         # LENS-d4000 모델 로드
         self.tokenizer = AutoTokenizer.from_pretrained("./weights_yibinlei/LENS-d4000")
         self.model = AutoModel.from_pretrained("./weights_yibinlei/LENS-d4000").half().to(DEVICE, dtype=torch.bfloat16)
-        # self.model2 = SentenceTransformer("all-MiniLM-L6-v2")
         self.model.eval()  # 추론 모드
         print(f"model created")
         
@@ -65,10 +64,6 @@ class VideoCaption:
         """embedding 생성"""
         embedding = self.encode_text(caption)
         return embedding
-
-    # def generate_embedding_sbert(self, caption):
-    #     embedding = self.encode_text_sbert(caption)
-    #     return embedding
     
     def save_to_elasticsearch(self, client, segment_name, start_time, end_time, caption, caption_ko, embedding, embedding_sbert, index_name=INDEX_NAME):
         """임베딩을 Elasticsearch에 저장"""
@@ -79,7 +74,6 @@ class VideoCaption:
             'caption': caption,
             'caption_ko': caption_ko,
             'caption_embedding': embedding.tolist(),
-            'caption_embedding_all-minilM-l6-v2' : embedding_sbert.tolist()
         }
         
         try:
@@ -109,7 +103,6 @@ def create_index():
                 "caption": {"type": "text"},
                 "caption_ko": {"type": "text"},
                 "caption_embedding": {"type": "dense_vector", "dims": 4096},
-                "caption_embedding_all-minilM-l6-v2": {"type": "dense_vector", "dims": 384}
             }
         }
     }
@@ -147,7 +140,6 @@ def save_from_csv(csv_path: str):
         try:
             # 임베딩 생성
             embedding = captioner.generate_embedding(row['caption'])
-            embedding_sbert = captioner.generate_embedding_sbert(row['caption'])
             # Elasticsearch에 저장
             # caption_ko를 제외하고 입력
             captioner.save_to_elasticsearch(
@@ -158,7 +150,6 @@ def save_from_csv(csv_path: str):
                 caption=row['caption'],
                 caption_ko="",
                 embedding=embedding,
-                embedding_sbert=embedding_sbert,
                 index_name=INDEX_NAME
             )
             print(f"Successfully processed: {row['segment_name']}")

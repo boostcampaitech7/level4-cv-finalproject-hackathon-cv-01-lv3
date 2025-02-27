@@ -9,13 +9,12 @@ from tqdm import tqdm
 from torch import Tensor
 from download import main
 from torch.cuda.amp import autocast
-import numpy as np
-import onnxruntime as ort
+from sentence_transformers import SentenceTransformer
 
 # main()
 
 
-INDEX_NAME = "movieclips"
+INDEX_NAME = "snowflake"
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -25,6 +24,7 @@ def get_elasticsearch_client():
     
     if not elasticsearch_url or not elasticsearch_api_key:
         raise ValueError("환경 변수 ELASTICSEARCH_URL과 ELASTICSEARCH_API_KEY를 설정해주세요.")
+    
     return Elasticsearch(
         elasticsearch_url,
         api_key=elasticsearch_api_key
@@ -33,44 +33,22 @@ def get_elasticsearch_client():
 class VideoCaption:
     def __init__(self):
         # 설정 로드
-        # LENS-d4000 모델 로드
-        self.tokenizer = AutoTokenizer.from_pretrained("./weights_yibinlei/LENS-d4000")
-        self.model = AutoModel.from_pretrained("./weights_yibinlei/LENS-d4000").half().to(DEVICE, dtype=torch.bfloat16)
-        # self.model2 = SentenceTransformer("all-MiniLM-L6-v2")
+         # snowflake-arctic-embed-l-v2.0 모델 로드
+        self.model = SentenceTransformer("./weights_snowflake-arctic-embed-l-v2.0", device=DEVICE)
         self.model.eval()  # 추론 모드
-        print(f"model created")
-        
+
     def encode_text(self, text):
         """텍스트를 임베딩 벡터로 변환"""
-        inputs = self.tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512).to(DEVICE)
         with torch.no_grad():
-            with torch.amp.autocast(DEVICE):
-                # 모델 실행
-                outputs = self.model(**inputs)
-            # LENS-d8000 모델의 경우 마지막 hidden state를 사용
-            text_embedding = self.pooling_func(outputs.last_hidden_state, inputs['attention_mask'])  # 평균을 사용해 벡터화
-            
-            return text_embedding.squeeze(0).cpu().numpy()
-    
-    def encode_text_sbert(self, text):
-        with torch.no_grad():
-            text_embedding = self.model2.cuda().encode(text, normalize_embeddings=True)
-        return text_embedding
-    
-    def pooling_func(self, vecs: Tensor, pooling_mask: Tensor) -> Tensor:
-        # max-pooling을 사용
-        return torch.max(torch.log(1 + torch.relu(vecs)) * pooling_mask.unsqueeze(-1), dim=1).values
+            text_embedding = self.model.encode(text, convert_to_tensor=True, normalize_embeddings=True)
+        return text_embedding.cpu().numpy()
 
     def generate_embedding(self, caption):
         """embedding 생성"""
         embedding = self.encode_text(caption)
         return embedding
-
-    # def generate_embedding_sbert(self, caption):
-    #     embedding = self.encode_text_sbert(caption)
-    #     return embedding
     
-    def save_to_elasticsearch(self, client, segment_name, start_time, end_time, caption, caption_ko, embedding, embedding_sbert, index_name=INDEX_NAME):
+    def save_to_elasticsearch(self, client, segment_name, start_time, end_time, caption, caption_ko, embedding, index_name=INDEX_NAME):
         """임베딩을 Elasticsearch에 저장"""
         doc = {
             'segment_name': segment_name,
@@ -79,7 +57,6 @@ class VideoCaption:
             'caption': caption,
             'caption_ko': caption_ko,
             'caption_embedding': embedding.tolist(),
-            'caption_embedding_all-minilM-l6-v2' : embedding_sbert.tolist()
         }
         
         try:
@@ -108,8 +85,7 @@ def create_index():
                 "end_time": {"type": "keyword"},
                 "caption": {"type": "text"},
                 "caption_ko": {"type": "text"},
-                "caption_embedding": {"type": "dense_vector", "dims": 4096},
-                "caption_embedding_all-minilM-l6-v2": {"type": "dense_vector", "dims": 384}
+                "caption_embedding": {"type": "dense_vector", "dims": 1024},
             }
         }
     }
@@ -147,7 +123,6 @@ def save_from_csv(csv_path: str):
         try:
             # 임베딩 생성
             embedding = captioner.generate_embedding(row['caption'])
-            embedding_sbert = captioner.generate_embedding_sbert(row['caption'])
             # Elasticsearch에 저장
             # caption_ko를 제외하고 입력
             captioner.save_to_elasticsearch(
@@ -158,7 +133,6 @@ def save_from_csv(csv_path: str):
                 caption=row['caption'],
                 caption_ko="",
                 embedding=embedding,
-                embedding_sbert=embedding_sbert,
                 index_name=INDEX_NAME
             )
             print(f"Successfully processed: {row['segment_name']}")
@@ -187,9 +161,8 @@ def calculate_bertscore(query_text: str, hits):
 
 def search_videos(query_text: str):
     start = time.time()
-    print(f"start_time : {start}")
     client = get_elasticsearch_client()
-    print(f"server started")
+    
     # 쿼리 텍스트를 임베딩 벡터로 변환
     model = VideoCaption()
     query_embedding = model.generate_embedding(query_text)
@@ -211,7 +184,6 @@ def search_videos(query_text: str):
     # 검색 실행
     try:
         start_search = time.time()
-        print(f"start search: {start_search}")
         results = client.search(index=INDEX_NAME, body=search_query)
         print("\n1 Stage Search Results:")
         for hit in results['hits']['hits']:
