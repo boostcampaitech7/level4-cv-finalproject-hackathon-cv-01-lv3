@@ -220,7 +220,7 @@ def search_videos(query_text: str):
     print(f"server started")
     model = VideoCaption()
     # 쿼리 텍스트를 임베딩 벡터로 변환
-    query_embedding = model.generate_embedding(query_text)
+    query_embedding = model.encode_text(query_text)
     
     # 벡터 유사도 검색 쿼리 구성
     search_query = {
