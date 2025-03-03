@@ -164,6 +164,8 @@ def save_from_csv(csv_path: str):
             print(f"Error processing {row['segment_name']}: {str(e)}")
             continue
 
+model = VideoCaption()
+
 def calculate_bertscore(query_text: str, hits):
     # BERTScore 계산
     candidate_captions = [hit['_source']['caption'] for hit in hits]
@@ -188,12 +190,12 @@ def search_videos(query_text: str):
     client = get_elasticsearch_client()
     print(f"server started")
     # 쿼리 텍스트를 임베딩 벡터로 변환
-    model = VideoCaption()
+    global model
     query_embedding = model.generate_embedding(query_text)
     
     # 벡터 유사도 검색 쿼리 구성
     search_query = {
-        "size": 1,  # 상위 5개 결과 반환
+        "size": 10,  # 상위 5개 결과 반환
         "query": {
             "script_score": {
                 "query": {"match_all": {}},
@@ -206,6 +208,7 @@ def search_videos(query_text: str):
     }
     
     # 검색 실행
+    retrieve = []
     try:
         start_search = time.time()
         print(f"start search: {start_search}")
@@ -220,13 +223,14 @@ def search_videos(query_text: str):
             print(f"Caption (EN): {source['caption']}")
             print(f"Caption (KO): {source['caption_ko']}")
             print(f"Similarity Score: {score}")
+            retrieve.append({'Segment_name': source['segment_name'], 'Start_time': source['start_time'], 'End_time': source['end_time'], 'Similarity Score': score})
         end = time.time()
         print(f"Embedding: {start_search - start: .3f}seconds!")
         print(f"Searching: {end - start_search: .3f}seconds!")
         print(f"Embedding + Searching: {end - start: .3f}seconds!")
     except Exception as e:
         print(f"Error during search: {str(e)}")
-    return f"Segment_name: {source['segment_name']}, Start_time: {source['start_time']}, End_time: {source['end_time']}, Similarity Score: {score}", source['segment_name']
+    return retrieve
 
 def prefiltering(query_text: str):
     client = get_elasticsearch_client()
@@ -272,24 +276,66 @@ def find_video(data_path: str, segment_name: str):
     for x in ['train', 'test']:
         if os.path.exists(os.path.join(video_path, x, 'clips', f'{segment_name}.mp4')):
             return os.path.join(video_path, x, 'clips', f'{segment_name}.mp4')
+# R@1 계산 함수
+def calculate_r1_r5_r10(csv_path):
+    df = pd.read_csv(csv_path)
+    correct_count_r1 = 0
+    correct_count_r5 = 0
+    correct_count_r10 = 0
+    correct_video_count_r1 = 0
+    correct_video_count_r5 = 0
+    correct_video_count_r10 = 0
+    total_queries = len(df)
+    
+    # 각 쿼리에 대해 검색 결과를 확인
+    for _, row in tqdm(df.iterrows(), total=total_queries, desc="Calculating R@1, R@5, R@10", unit="query"):
+        query = row["Generated_Query"]
+        true_segment_name = row["segment_name"]  # 실제 정답 segment_name
+        predicted_segments = search_videos(query)  # 상위 1개 결과
+        # 상위 1개 결과 R@1 계산
+        if predicted_segments[0]['Segment_name'] == true_segment_name:
+            correct_count_r1 += 1
+            print('R@1 hit!')
+        if predicted_segments[0]['Segment_name'][16:27] == true_segment_name[16:27]:
+            correct_video_count_r1 += 1
+            print('R@1-Video hit!')
+        
+        # 상위 5개 결과 R@5 계산
+        top_5_results = predicted_segments[:5]
+        for hit in top_5_results:
+            if hit['Segment_name'] == true_segment_name:
+                correct_count_r5 += 1
+                print('R@5 hit!')
+            if hit['Segment_name'][16:27] == true_segment_name[16:27]:
+                correct_video_count_r5 += 1
+                print('R@5-Video hit!')
+                break
+
+        # 상위 10개 결과 R@10 계산
+        top_10_results = predicted_segments[:10]
+        for hit in top_10_results:
+            if hit['Segment_name'] == true_segment_name:
+                correct_count_r10 += 1
+                print('R@10 hit!')
+            if hit['Segment_name'][16:27] == true_segment_name[16:27]:
+                correct_video_count_r10 += 1
+                print('R@10-Video hit!')
+                break
+
+    # R@1, R@5, R@10 계산
+    r1 = correct_count_r1 / total_queries
+    r5 = correct_count_r5 / total_queries
+    r10 = correct_count_r10 / total_queries
+    r1_video = correct_video_count_r1 / total_queries
+    r5_video = correct_video_count_r5 / total_queries
+    r10_video = correct_video_count_r10 / total_queries
+    
+    return r1, r5, r10, r1_video, r5_video, r10_video
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print("1. Create index: python create_index.py create")
-        print("2. Save from CSV: python create_index.py save <csv_path>")
-        print("3. Search: python create_index.py search <query_text>")
-        sys.exit(1)
-    
-    command = sys.argv[1]
-    
-    if command == "create":
-        create_index()
-    elif command == "save" and len(sys.argv) == 3:
-        save_from_csv(sys.argv[2])
-    elif command == "search" and len(sys.argv) == 3:
-        search_videos(sys.argv[2])
-    else:
-        print("Invalid command or missing arguments")
-
+    csv_path = '../generated_queries.csv'
+    r1, r5, r10, r1_video, r5_video, r10_video = calculate_r1_r5_r10(csv_path)
+    print(f"R@1: {r1:.4f}, by video {r1_video:.4f}")
+    print(f"R@5: {r5:.4f}, by video {r5_video:.4f}")
+    print(f"R@10: {r10:.4f}, by video {r10_video:.4f}")

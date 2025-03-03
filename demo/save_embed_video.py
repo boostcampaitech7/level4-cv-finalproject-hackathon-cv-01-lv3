@@ -1,3 +1,11 @@
+import torch
+from LongCLIP.model import longclip
+import numpy as np
+import cv2
+from torchvision import transforms
+from PIL import Image
+from sklearn.metrics.pairwise import cosine_similarity
+
 import os
 import torch
 from elasticsearch import Elasticsearch
@@ -10,9 +18,7 @@ from torch import Tensor
 from torch.cuda.amp import autocast
 import numpy as np
 
-
-
-INDEX_NAME = "movieclips"
+INDEX_NAME = "clip"
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -30,62 +36,82 @@ def get_elasticsearch_client():
 class VideoCaption:
     def __init__(self):
         # 설정 로드
-        # LENS-d4000 모델 로드
-        self.tokenizer = AutoTokenizer.from_pretrained("./weights_yibinlei/LENS-d4000")
-        self.model = AutoModel.from_pretrained("./weights_yibinlei/LENS-d4000").half().to(DEVICE, dtype=torch.bfloat16)
-        # self.model2 = SentenceTransformer("all-MiniLM-L6-v2")
-        self.model.eval()  # 추론 모드
-        print(f"model created")
+        self.model, self.preprocess = longclip.load("./LongCLIP/checkpoints/longclip-L.pt", DEVICE)
+    
+    def sample_video_frames(self, video_path, num_frames=16, target_size=(224, 224)):
+        cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-    def encode_text(self, text):
-        """텍스트를 임베딩 벡터로 변환"""
-        inputs = self.tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512).to(DEVICE)
+        # 균등 간격으로 16개 프레임 선택
+        frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+        frames = []
+
+        for i in range(total_frames):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if i in frame_indices:
+                frame = cv2.resize(frame, target_size)  # 프레임 크기 조정
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # RGB 변환
+                frames.append(frame)
+
+        cap.release()
+        
+        if len(frames) < num_frames:
+            print(f"Warning: {video_path} has less than {num_frames} frames. Padding with last frame.")
+            while len(frames) < num_frames:
+                frames.append(frames[-1])  # 마지막 프레임으로 패딩
+
+        return np.array(frames)  # (16, 224, 224, 3) 형태 반환
+
+    def encode_video(self, video_path):
+        frames = self.sample_video_frames(video_path)  # (16, 224, 224, 3)
+
+        # 프레임을 PIL 이미지로 변환한 후 preprocess 적용
+        frames_pil = [Image.fromarray(frame) for frame in frames]  # numpy.ndarray -> PIL.Image
+        frames_tensor = torch.stack([self.preprocess(frame) for frame in frames_pil]).to(DEVICE)  # (16, 3, 224, 224)
+        
+        # 각 프레임을 개별적으로 인코딩하고 평균내기
         with torch.no_grad():
-            with torch.amp.autocast(DEVICE):
-                # 모델 실행
-                outputs = self.model(**inputs)
-            # LENS-d8000 모델의 경우 마지막 hidden state를 사용
-            text_embedding = self.pooling_func(outputs.last_hidden_state, inputs['attention_mask'])  # 평균을 사용해 벡터화
-            
-            return text_embedding.squeeze(0).to(dtype=torch.float32).cpu().numpy()
-    
-    def encode_text_sbert(self, text):
-        with torch.inference_mode():
-            text_embedding = self.model2.cuda().encode(text, normalize_embeddings=True)
-        return text_embedding
-    
-    def pooling_func(self, vecs: Tensor, pooling_mask: Tensor) -> Tensor:
-        # max-pooling을 사용
-        return torch.max(torch.log(1 + torch.relu(vecs)) * pooling_mask.unsqueeze(-1), dim=1).values
+            frame_features = [self.model.encode_image(frame.unsqueeze(0)) for frame in frames_tensor]
+        
+        # 각 프레임의 특징 벡터를 평균하여 비디오 임베딩 생성
+        video_embedding = torch.mean(torch.stack(frame_features), dim=0)
+        return video_embedding / video_embedding.norm(dim=-1, keepdim=True)  # 정규화
 
-    def generate_embedding(self, caption):
+    def encode_text(self, text):
+        text_input = longclip.tokenize([text]).to(DEVICE)
+        with torch.no_grad():
+            text_features = self.model.encode_text(text_input)
+        return text_features / text_features.norm(dim=-1, keepdim=True)
+
+    def generate_embedding(self, video_path):
         """embedding 생성"""
-        embedding = self.encode_text(caption)
+        embedding = self.encode_video(video_path)
         return embedding
-
-    # def generate_embedding_sbert(self, caption):
-    #     embedding = self.encode_text_sbert(caption)
-    #     return embedding
     
-    def save_to_elasticsearch(self, client, segment_name, start_time, end_time, caption, caption_ko, embedding, embedding_sbert, index_name=INDEX_NAME):
-        """임베딩을 Elasticsearch에 저장"""
+    def save_to_elasticsearch(self, client, segment_name, start_time, end_time, caption, caption_ko, video_embedding, text_embedding = None, index_name=INDEX_NAME):
+        """임베딩을 Elasticsearch에 저장
+            Text Embedding은 확인용도로, 실제 계산 시에는 쓰이지 않을 예정임
+        """
+
         doc = {
             'segment_name': segment_name,
             'start_time': start_time,   
             'end_time': end_time,
             'caption': caption,
             'caption_ko': caption_ko,
-            'caption_embedding': embedding.tolist(),
-            'caption_embedding_all-minilM-l6-v2' : embedding_sbert.tolist()
+            'video_embedding': video_embedding.squeeze().tolist(),
+            'caption_embedding' : text_embedding.squeeze().tolist() if text_embedding is not None else ""
         }
         
         try:
             response = client.index(index=index_name, document=doc)
             print(f"Document indexed: {response['result']}")
-            print(f"Embedding dimension: {len(doc['caption_embedding'])}")
+            print(f"Embedding dimension: {len(doc['video_embedding'])}")
         except Exception as e:
             print(f"Error saving to Elasticsearch: {str(e)}")
-            print(f"Embedding shape: {embedding.shape}")
+            print(f"Video Embedding shape: {video_embedding.shape}")
 
 def create_index():
     client = get_elasticsearch_client()
@@ -105,8 +131,8 @@ def create_index():
                 "end_time": {"type": "keyword"},
                 "caption": {"type": "text"},
                 "caption_ko": {"type": "text"},
-                "caption_embedding": {"type": "dense_vector", "dims": 4096},
-                "caption_embedding_all-minilM-l6-v2": {"type": "dense_vector", "dims": 384}
+                "video_embedding": {"type": "dense_vector", "dims": 768},
+                "caption_embedding": {"type": "dense_vector", "dims": 768}
             }
         }
     }
@@ -114,7 +140,7 @@ def create_index():
     client.indices.create(index=index_name, body=mappings)
     print(f"Created new index: {index_name} with mappings")
 
-def save_from_csv(csv_path: str):
+def save_from_csv(csv_path: str, data_path: str = '../../video'):
     client = get_elasticsearch_client()
     
     # CSV 파일 읽기
@@ -141,10 +167,15 @@ def save_from_csv(csv_path: str):
             print(f"Skipping {row['segment_name']}: Already exists")
             continue
         
+        video_path = get_video(video_name=row['segment_name'], data_path=data_path)
+        if video_path is None:
+            print(f"passing {row['segment_name']}")
+            continue
+        
         try:
             # 임베딩 생성
-            embedding = captioner.generate_embedding(row['caption'])
-            embedding_sbert = captioner.generate_embedding_sbert(row['caption'])
+            video_embedding = captioner.generate_embedding(video_path)
+            text_embedding = captioner.encode_text(row['caption'])
             # Elasticsearch에 저장
             # caption_ko를 제외하고 입력
             captioner.save_to_elasticsearch(
@@ -154,8 +185,8 @@ def save_from_csv(csv_path: str):
                 end_time=row['end_time'],
                 caption=row['caption'],
                 caption_ko="",
-                embedding=embedding,
-                embedding_sbert=embedding_sbert,
+                video_embedding=video_embedding,
+                text_embedding=text_embedding,
                 index_name=INDEX_NAME
             )
             print(f"Successfully processed: {row['segment_name']}")
@@ -189,7 +220,7 @@ def search_videos(query_text: str):
     print(f"server started")
     # 쿼리 텍스트를 임베딩 벡터로 변환
     model = VideoCaption()
-    query_embedding = model.generate_embedding(query_text)
+    query_embedding = model.encode_text(query_text)
     
     # 벡터 유사도 검색 쿼리 구성
     search_query = {
@@ -198,14 +229,15 @@ def search_videos(query_text: str):
             "script_score": {
                 "query": {"match_all": {}},
                 "script": {
-                    "source": "cosineSimilarity(params.query_vector, 'caption_embedding') + 1.0",
-                    "params": {"query_vector": query_embedding.tolist()}
+                    "source": "cosineSimilarity(params.query_vector, 'video_embedding') + 1.0",
+                    "params": {"query_vector": query_embedding.squeeze().tolist()}
                 }
             }
         }
     }
     
     # 검색 실행
+    retrieve = []
     try:
         start_search = time.time()
         print(f"start search: {start_search}")
@@ -220,44 +252,15 @@ def search_videos(query_text: str):
             print(f"Caption (EN): {source['caption']}")
             print(f"Caption (KO): {source['caption_ko']}")
             print(f"Similarity Score: {score}")
+            retrieve.append({'Segment_name': source['segment_name'], 'Start_time': source['start_time'], 'End_time': source['end_time'], 'Similarity Score': score})
+
         end = time.time()
         print(f"Embedding: {start_search - start: .3f}seconds!")
         print(f"Searching: {end - start_search: .3f}seconds!")
         print(f"Embedding + Searching: {end - start: .3f}seconds!")
     except Exception as e:
         print(f"Error during search: {str(e)}")
-    return f"Segment_name: {source['segment_name']}, Start_time: {source['start_time']}, End_time: {source['end_time']}, Similarity Score: {score}", source['segment_name']
-
-def prefiltering(query_text: str):
-    client = get_elasticsearch_client()
-    captioner = VideoCaption()
-    
-    # 쿼리 텍스트를 임베딩 벡터로 변환
-    query_embedding = captioner.generate_embedding(query_text)
-    
-    # 벡터 유사도 검색 쿼리 구성
-    search_query = {
-        "size": 20,  # 상위 20개 결과 반환
-        "query": {
-            "script_score": {
-                "query": {"match_all": {}},
-                "script": {
-                    "source": "cosineSimilarity(params.query_vector, 'caption_embedding') + 1.0",
-                    "params": {"query_vector": query_embedding.tolist()}
-                }
-            }
-        }
-    }
-    
-    # 검색 실행
-    try:
-        results = client.search(index=INDEX_NAME, body=search_query)
-        hits = results['hits']['hits']
-        return hits
-    except Exception as e:
-        print(f"Error during search: {str(e)}")
-        return []
-
+    return retrieve
 
 def run(query_text: str)-> tuple[str, str]:
     results, segment_name = search_videos(query_text)
@@ -267,11 +270,25 @@ def run(query_text: str)-> tuple[str, str]:
     return results, segment_name
 
 def find_video(data_path: str, segment_name: str):  
+    """
+    Demo 용
+    """
     dsrc, category, _, _ = segment_name.split('_')
     video_path = os.path.join(data_path, dsrc.upper(), category)
     for x in ['train', 'test']:
         if os.path.exists(os.path.join(video_path, x, 'clips', f'{segment_name}.mp4')):
             return os.path.join(video_path, x, 'clips', f'{segment_name}.mp4')
+
+def get_video(video_name: str, data_path: str = '../../video'):
+    """
+    T2V 시, CLIP에서 사용하는 용도
+    """
+    video_path = os.path.join(data_path, 'clips', f"{video_name}.mp4")
+    if os.path.exists(video_path):
+        return video_path
+    else:
+        print(f"We could not find the video {video_name} in {video_path}! Returning None instead")
+        return None
 
 if __name__ == "__main__":
     import sys
@@ -292,4 +309,3 @@ if __name__ == "__main__":
         search_videos(sys.argv[2])
     else:
         print("Invalid command or missing arguments")
-

@@ -7,7 +7,6 @@ from sentence_transformers import SentenceTransformer
 import time
 from tqdm import tqdm
 from torch import Tensor
-from download import main
 from torch.cuda.amp import autocast
 from sentence_transformers import SentenceTransformer
 
@@ -33,7 +32,7 @@ def get_elasticsearch_client():
 class VideoCaption:
     def __init__(self):
         # 설정 로드
-         # snowflake-arctic-embed-l-v2.0 모델 로드
+        # snowflake-arctic-embed-l-v2.0 모델 로드
         self.model = SentenceTransformer("./weights_snowflake-arctic-embed-l-v2.0", device=DEVICE)
         self.model.eval()  # 추론 모드
 
