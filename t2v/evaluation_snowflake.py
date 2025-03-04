@@ -8,13 +8,13 @@ import time
 from tqdm import tqdm
 from torch import Tensor
 from torch.cuda.amp import autocast
+from sentence_transformers import SentenceTransformer
 import numpy as np
+# main()
 
 
-
-INDEX_NAME = "movieclips"
+INDEX_NAME = "snowflake"
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-
 
 def get_elasticsearch_client():
     elasticsearch_url = os.environ.get('ELASTICSEARCH_URL')
@@ -22,6 +22,7 @@ def get_elasticsearch_client():
     
     if not elasticsearch_url or not elasticsearch_api_key:
         raise ValueError("환경 변수 ELASTICSEARCH_URL과 ELASTICSEARCH_API_KEY를 설정해주세요.")
+    
     return Elasticsearch(
         elasticsearch_url,
         api_key=elasticsearch_api_key
@@ -30,44 +31,22 @@ def get_elasticsearch_client():
 class VideoCaption:
     def __init__(self):
         # 설정 로드
-        # LENS-d4000 모델 로드
-        self.tokenizer = AutoTokenizer.from_pretrained("./weights_yibinlei/LENS-d4000")
-        self.model = AutoModel.from_pretrained("./weights_yibinlei/LENS-d4000").half().to(DEVICE, dtype=torch.bfloat16)
-        # self.model2 = SentenceTransformer("all-MiniLM-L6-v2")
+        # snowflake-arctic-embed-l-v2.0 모델 로드
+        self.model = SentenceTransformer("./weights/weights_snowflake-arctic-embed-l-v2.0", device=DEVICE)
         self.model.eval()  # 추론 모드
-        print(f"model created")
-        
+
     def encode_text(self, text):
         """텍스트를 임베딩 벡터로 변환"""
-        inputs = self.tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512).to(DEVICE)
         with torch.no_grad():
-            with torch.amp.autocast(DEVICE):
-                # 모델 실행
-                outputs = self.model(**inputs)
-            # LENS-d8000 모델의 경우 마지막 hidden state를 사용
-            text_embedding = self.pooling_func(outputs.last_hidden_state, inputs['attention_mask'])  # 평균을 사용해 벡터화
-            
-            return text_embedding.squeeze(0).to(dtype=torch.float32).cpu().numpy()
-    
-    def encode_text_sbert(self, text):
-        with torch.inference_mode():
-            text_embedding = self.model2.cuda().encode(text, normalize_embeddings=True)
-        return text_embedding
-    
-    def pooling_func(self, vecs: Tensor, pooling_mask: Tensor) -> Tensor:
-        # max-pooling을 사용
-        return torch.max(torch.log(1 + torch.relu(vecs)) * pooling_mask.unsqueeze(-1), dim=1).values
+            text_embedding = self.model.encode(text, convert_to_tensor=True, normalize_embeddings=True)
+        return text_embedding.cpu().numpy()
 
     def generate_embedding(self, caption):
         """embedding 생성"""
         embedding = self.encode_text(caption)
         return embedding
-
-    # def generate_embedding_sbert(self, caption):
-    #     embedding = self.encode_text_sbert(caption)
-    #     return embedding
     
-    def save_to_elasticsearch(self, client, segment_name, start_time, end_time, caption, caption_ko, embedding, embedding_sbert, index_name=INDEX_NAME):
+    def save_to_elasticsearch(self, client, segment_name, start_time, end_time, caption, caption_ko, embedding, index_name=INDEX_NAME):
         """임베딩을 Elasticsearch에 저장"""
         doc = {
             'segment_name': segment_name,
@@ -76,7 +55,6 @@ class VideoCaption:
             'caption': caption,
             'caption_ko': caption_ko,
             'caption_embedding': embedding.tolist(),
-            'caption_embedding_all-minilM-l6-v2' : embedding_sbert.tolist()
         }
         
         try:
@@ -86,6 +64,8 @@ class VideoCaption:
         except Exception as e:
             print(f"Error saving to Elasticsearch: {str(e)}")
             print(f"Embedding shape: {embedding.shape}")
+
+model = VideoCaption()
 
 def create_index():
     client = get_elasticsearch_client()
@@ -105,8 +85,7 @@ def create_index():
                 "end_time": {"type": "keyword"},
                 "caption": {"type": "text"},
                 "caption_ko": {"type": "text"},
-                "caption_embedding": {"type": "dense_vector", "dims": 4096},
-                "caption_embedding_all-minilM-l6-v2": {"type": "dense_vector", "dims": 384}
+                "caption_embedding": {"type": "dense_vector", "dims": 1024},
             }
         }
     }
@@ -144,7 +123,6 @@ def save_from_csv(csv_path: str):
         try:
             # 임베딩 생성
             embedding = captioner.generate_embedding(row['caption'])
-            embedding_sbert = captioner.generate_embedding_sbert(row['caption'])
             # Elasticsearch에 저장
             # caption_ko를 제외하고 입력
             captioner.save_to_elasticsearch(
@@ -155,7 +133,6 @@ def save_from_csv(csv_path: str):
                 caption=row['caption'],
                 caption_ko="",
                 embedding=embedding,
-                embedding_sbert=embedding_sbert,
                 index_name=INDEX_NAME
             )
             print(f"Successfully processed: {row['segment_name']}")
@@ -164,27 +141,7 @@ def save_from_csv(csv_path: str):
             print(f"Error processing {row['segment_name']}: {str(e)}")
             continue
 
-model = VideoCaption()
-
-def calculate_bertscore(query_text: str, hits):
-    # BERTScore 계산
-    candidate_captions = [hit['_source']['caption'] for hit in hits]
-
-    P, R, F1 = score([query_text] * len(candidate_captions), candidate_captions, lang='en')
-
-    # 각 비디오에 대해 BERTScore F1 점수와 함께 반환
-    scored_results = []
-    for i, hit in enumerate(hits):
-        hit_score = F1[i].item()
-        hit_data = hit['_source']
-        hit_data['bert_score'] = hit_score
-        scored_results.append(hit_data)
-    
-    scored_results = sorted(scored_results, key=lambda x: x['bert_score'], reverse=True)
-    
-    return scored_results[:5]
-
-def search_videos(query_text: str):
+def search_videos_snowflake(query_text: str):
     start = time.time()
     print(f"start_time : {start}")
     client = get_elasticsearch_client()
@@ -267,7 +224,7 @@ def prefiltering(query_text: str):
 
 
 def run(query_text: str)-> tuple[str, str]:
-    results, segment_name = search_videos(query_text)
+    results, segment_name = search_videos_snowflake(query_text)
 
     print(f"\n\n[DEBUG] results: {results}")
     print(f"[DEBUG] segment_name: {segment_name}")
@@ -295,19 +252,20 @@ def calculate_r1_r5_r10(csv_path):
     embedding_times = []
     searching_times = []
     total_times = []
-
+    results = []
     for _, row in tqdm(df.iterrows(), total=total_queries, desc="Calculating R@1, R@5, R@10", unit="query"):
         query = row["Generated_Query"]
         query_type = row['Query_Type']
         true_segment_name = row["segment_name"]  # 실제 정답 segment_name
         
-        predicted_segments, embedding_time, searching_time, total_time = search_videos(query)  
+        predicted_segments, embedding_time, searching_time, total_time = search_videos_snowflake(query)  
         r1, r5, r10 = False, False, False
 
         embedding_times.append(embedding_time)
         searching_times.append(searching_time)
         total_times.append(total_time)
-
+        result = [(predicted_segments[i]['Segment_name'],predicted_segments[i]['_score']) for i in range(len(predicted_segments))]
+        results.append(result)
         # R@1 계산
         if predicted_segments[0]['Segment_name'] == true_segment_name:
             correct_count_r1 += 1
@@ -391,17 +349,32 @@ def calculate_r1_r5_r10(csv_path):
 
     evaluations = pd.concat([evaluations, final_scores], ignore_index=True)
 
-    return r1, r5, r10, r1_video, r5_video, r10_video, evaluations
+    return r1, r5, r10, r1_video, r5_video, r10_video, evaluations, results
+
+
+
+
+
+## 임시
+def calculate_r1_r5_r10_single(row):
+    query = row["Generated_Query"]
+    query_type = row['Query_Type']
+    true_segment_name = row["segment_name"]  # 실제 정답 segment_name
+    
+    predicted_segments, embedding_time, searching_time, total_time = search_videos_snowflake(query)  
+    result = [(predicted_segments[i]['Segment_name'],predicted_segments[i]['Similarity Score']) for i in range(len(predicted_segments))]
+
+    return result
 
 if __name__ == "__main__":
     import sys
     csv_path = '../test.csv'
-    r1, r5, r10, r1_video, r5_video, r10_video, evaluations = calculate_r1_r5_r10(csv_path)
+    r1, r5, r10, r1_video, r5_video, r10_video, evaluations, results = calculate_r1_r5_r10(csv_path)
 
     print(f"R@1: {r1:.4f}, by video {r1_video:.4f}")
     print(f"R@5: {r5:.4f}, by video {r5_video:.4f}")
     print(f"R@10: {r10:.4f}, by video {r10_video:.4f}")
 
     # 최종 결과를 CSV 파일로 저장
-    evaluations.to_csv("evaluation_results.csv", index=False)
-    print("Results saved to evaluation_results.csv")
+    evaluations.to_csv("evaluation_results_snowflake.csv", index=False)
+    print("Results saved to evaluation_results_snowflake.csv")
