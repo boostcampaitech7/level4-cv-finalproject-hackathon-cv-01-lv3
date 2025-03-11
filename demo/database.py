@@ -3,8 +3,8 @@ import sys
 from elasticsearch import Elasticsearch
 import pandas as pd
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from t2v.evaluation_snowflake import VideoCaption as Snowflake
-from t2v.evaluation_longclip import VideoCaption as LongCLIP
+from t2v.evaluation_snowflake import Snowflake
+from t2v.evaluation_longclip import LongCLIP
 
 # level4-cv-finalproject-hackathon-cv-01-lv3/t2v 폴더가 필요합니다.
 # level4-cv-finalproject-hackathon-cv-01-lv3/t2v/weights 내부에 snowflake, longclip에 대한 weight가 저장되어 있어야 합니다.
@@ -42,7 +42,8 @@ class VideoCaption:
         return ft_text_embedding
     
     def _ft_encode_video(self, video_path: str, num_frames: int=8):
-        """Video (Frame)-to-Text 비교를 위해 비디오를 8장의 프레임 임베딩 벡터로 변환"""
+        """Video (Frame)-to-Text 비교를 위해 비디오를 8장의 프레임 임베딩 벡터로 변환
+        num_frames argument를 수정하여 몇 개의 프레임을 Vector DB에 저장할 지 조절할 수 있습니다."""
         ft_video_embedding = self.ftmodel.encode_video(video_path, num_frames)
         return ft_video_embedding
 

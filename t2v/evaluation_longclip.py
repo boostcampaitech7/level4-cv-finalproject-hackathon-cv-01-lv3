@@ -12,7 +12,7 @@ import torch
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-class VideoCaption:
+class LongCLIP:
     """
     Frame-Text 간 Similarity를 비교할 수 있는 LongCLIP 모델을 가용할 수 있는 클래스
     """
@@ -28,7 +28,7 @@ class VideoCaption:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         # 균등 간격으로 n개 프레임 선택 
-        frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+        frame_indices = np.linspace(0, total_frames-1, num_frames, dtype=int)
         frames = []
 
         for i in range(total_frames):

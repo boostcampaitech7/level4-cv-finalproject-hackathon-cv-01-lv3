@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-class VideoCaption:
+class Snowflake:
     """
     Text-Text 간 Similarity를 비교할 수 있는 Snowflake 모델을 가용할 수 있는 클래스
     """
