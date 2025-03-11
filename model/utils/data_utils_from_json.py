@@ -66,6 +66,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
             num_frames: int = 16,
             save_frames_as_img: bool = False,
             resize: int = 224,
+            save_dir: str = './saved_frames'
     ):
         # video
         assert data_path is not None and isinstance(data_path, str), "data_path must be a string, or not None"
@@ -81,6 +82,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         self.num_frames: int = num_frames
         self.save_frames_as_img: bool = save_frames_as_img
         self.resize: int = resize
+        self.save_dir = save_dir
         
     def __len__(self):
         # json형태의 annotations가 각 segment마다 하나씩 존재하므로, json파일의 개수를 반환하면 됨
@@ -109,7 +111,7 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         
         # 동영상 읽기
         frames, frame_indices, duration = read_frames_cv2(
-            video_path, self.use_segment, start_time, end_time, self.s3_client, num_frames = self.num_frames, save_frames_as_img = self.save_frames_as_img)
+            video_path, self.use_segment, start_time, end_time, self.s3_client, num_frames = self.num_frames, save_frames_as_img = self.save_frames_as_img, save_dir=self.save_dir)
         
         # audio, segment이므로 full audio 사용
         if self.use_audio:
@@ -153,30 +155,17 @@ class InternVideo2_VideoChat2_Dataset(Dataset):
         ## dsrc는 데이터 출처를 의미 (예: YT8M, MVAD 등)
         if not os.path.isdir(data_path):
             raise NotADirectoryError(f'{data_path} is not a directory! Please set data_path as proper directory path \n Inside data_path, there should be data/your_data_source/your_category!')
-        for dsrc in sorted(os.listdir(data_path)):
-            dsrc_path = os.path.join(data_path, dsrc)
-            if not os.path.isdir(dsrc_path):
+        for directory in sorted(os.listdir(data_path)):
+            directory_path = os.path.join(data_path, directory)
+            if not os.path.isdir(directory_path):
                 continue
+            if directory == 'labels':
+                sub_labels = [os.path.join(directory_path, x) for x in sorted(os.listdir(directory_path)) if x.endswith('json')]
+                all_labels.extend(sub_labels)
 
-            ## category는 데이터의 category를 의미함 (예: movieclips, trailer 등)
-            for category in sorted(os.listdir(dsrc_path)):
-                category_path = os.path.join(dsrc_path, category)
-                if not os.path.isdir(category_path):
-                    continue
-                if os.path.exists(os.path.join(category_path, train)):
-                    ## directory는 반드시 먼저 train 또는 test로 이루어지며, 이후, clips 혹은 labels로 나누어짐
-                    for directory in sorted(os.listdir(os.path.join(category_path, train))):
-                        directory_path = os.path.join(category_path, train, directory)
-                        if not os.path.isdir(directory_path):
-                            continue
-                        # train인지 test인지. task와 동일하다면 진행 아니면 pass
-                        if directory == 'labels':
-                            sub_labels = [os.path.join(directory_path, x) for x in sorted(os.listdir(directory_path)) if x.endswith('json')]
-                            all_labels.extend(sub_labels)
-
-                        elif directory == 'clips':
-                            sub_clips = [os.path.join(directory_path, x) for x in sorted(os.listdir(directory_path)) if x.endswith('mp4')]
-                            all_clips.extend(sub_clips)
+            elif directory == 'clips':
+                sub_clips = [os.path.join(directory_path, x) for x in sorted(os.listdir(directory_path)) if x.endswith('mp4')]
+                all_clips.extend(sub_clips)
         self.integrity_check(all_labels, all_clips)
         return all_labels
 
