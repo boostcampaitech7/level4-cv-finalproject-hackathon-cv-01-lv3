@@ -4,3 +4,5 @@ albumentations
 wandb
 scikit-learn
 bert-score
+elasticsearch
+sentence_transformers
