@@ -105,8 +105,7 @@ def read_frames_cv2(
 
     # segment에 해당하는 frame만 추가
     
-    if total_frames == 1:
-        idx = 0
+    for idx in sorted(list(np.linspace(frame_indices[0], frame_indices[1]-1, num_frames).astype(int))):#frame_indices[1]): # 등간격
         video.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = video.read()
         if not ret:
@@ -120,24 +119,7 @@ def read_frames_cv2(
             output_path = os.path.join(temp_path, f"{os.path.basename(video_path)}_{idx:04d}.png")  # 예: frame_0010.png
             cv2.imwrite(output_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))  # 저장 시 RGB -> BGR 변환 필요
             print(f"success processing frame idx: {idx} frames")
-        video.release()
-    
-    else:
-        for idx in sorted(list(np.linspace(frame_indices[0], frame_indices[1]-1, num_frames).astype(int))):#frame_indices[1]): # 등간격
-            video.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = video.read()
-            if not ret:
-                raise Exception(f"Failed to read frame: {idx}, Error video path: {video_path}")
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames.append(frame)
-            # 이미지로 저장 (디버깅용 추가: 25.01.25)
-            if save_frames_as_img:
-                temp_path = os.path.join(save_dir, os.path.splitext(os.path.basename(video_path))[0])
-                os.makedirs(temp_path, exist_ok=True)
-                output_path = os.path.join(temp_path, f"{os.path.basename(video_path)}_{idx:04d}.png")  # 예: frame_0010.png
-                cv2.imwrite(output_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))  # 저장 시 RGB -> BGR 변환 필요
-                print(f"success processing frame idx: {idx} frames")
-        video.release()
+    video.release()
     
 
     # (T, H, W, C) to (T, C, H, W), numpy to tensor, dtype=torch.uint8
