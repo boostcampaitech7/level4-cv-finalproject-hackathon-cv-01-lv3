@@ -1,0 +1,19 @@
+blank_issues_enabled: false
+issue_template_chooser:
+  custom_templates:
+    - name: Tracking issue (Experiment)
+      about: Use this template for tracking new experiments.
+      template: experiment_issue_template.md
+      title: ":test_tube: "
+    - name: Feature issue
+      about: Use this template for tracking new features.
+      template: feature_issue_template.md
+      title: ":hammer: "
+    - name: Bug fix issue
+      about: Use this template for fixing bugs.
+      template: fix_issue_template.mds
+      title: ":bug: "
+    - name: Refactor issue
+      about: Use this template for refactoring code.
+      template: refactor_issue_template.mds
+      title: ":recycle: "

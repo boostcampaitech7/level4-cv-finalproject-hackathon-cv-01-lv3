@@ -1,0 +1,16 @@
+program: train.py
+project: "cv-finalproject"  # ← 프로젝트 이름 강제 지정
+entity: "boostcamp-cv-01"  # ← 팀/개인 계정명 추가
+method: bayes  # 베이지안 최적화
+metric:
+  name: validation_score
+  goal: maximize  # 검증 점수 최대화
+parameters:
+  learning_rate:
+    min: 0.00001
+    max: 0.01
+    distribution: uniform
+  weight_decay:
+    min: 0.0
+    max: 0.1
+    distribution: uniform
