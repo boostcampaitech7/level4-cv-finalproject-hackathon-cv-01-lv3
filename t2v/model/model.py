@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from text_model import Snowflake
 from transformers import AutoModel, AutoTokenizer
+from aggregator import SpaceTimeBridgeEncoder
 
 class AlignModel(nn.Module):
     def __init__(self, 
@@ -21,12 +22,7 @@ class AlignModel(nn.Module):
         low_cpu_mem_usage=True,
         use_flash_attn=False,
         trust_remote_code=True).cuda().eval()
-        tokenizer = AutoTokenizer.from_pretrained('../weights/OpenGVLab/VisionExtractionVL3', trust_remote_code=True, use_fast=False)
-        ## InternViT와 관련된 변수들
-        # model.head = nn.Identity()
-        # model.pre_logits = nn.Identity()
-        # self.video_model.fc = nn.Identity()
-        ##
+        self.bridge = SpaceTimeBridgeEncoder(transformer_dim=3584).to(torch.bfloat16)
 
         self.txt_proj = nn.Sequential(nn.ReLU(),
                                  nn.Linear(self.text_dim, projection_dim))
@@ -34,9 +30,14 @@ class AlignModel(nn.Module):
         self.vid_proj = nn.Sequential(nn.Linear(self.video_dim, projection_dim))
     
     def forward(self, data, return_embeds=True):
-
-        text_data = data['text']
-        video_data = data['video']
+        if len(data) == 0:
+            raise RuntimeError(f"No Data in data: {data}. It should have dict structure with keys 'text' and 'video'")
+        if isinstance(data, list):
+            text_data = [x['text'] for x in data]
+            video_data = [x['video'] for x in data]
+        else:
+            text_data = [data['text']]
+            video_data = [data['video']]
 
         text_embeddings = self.compute_text(text_data)
         video_embeddings = self.compute_video(video_data)
@@ -46,14 +47,35 @@ class AlignModel(nn.Module):
 
         return sim_matrix(text_embeddings, video_embeddings)
     
+    def _batch_encode_text(self, text_data):
+        text_embeddings = []
+        for txt in text_data:
+            text_embedding = self.text_model.encode_text(txt).to(torch.bfloat16)
+            text_embeddings.append(text_embedding.cpu())
+        return torch.stack(text_embeddings, dim=0)
+    
+    def _batch_encode_video(self, video_data):
+        video_embeddings = []
+        for vid in video_data:
+            with torch.no_grad():  # 추가 필요
+                video_embedding = self.video_model.extract_feature(vid.cuda())
+            video_embeddings.append(video_embedding.cpu())
+        return torch.stack(video_embeddings, dim=0)
+    
     def compute_text(self, text_data):
-        text_embeddings = self.text_model.encode_text(text_data).to(torch.bfloat16)
-        text_embeddings = self.txt_proj(text_embeddings)
+        text_embeddings = self._batch_encode_text(text_data).detach().cuda()
+        print(f"After Passing Snowflake Encode_text:: text_embeddings.shape: {text_embeddings.shape}")
+        text_embeddings = self.txt_proj(text_embeddings.cuda())
+        print(f"After Passing Projection:: text_embeddings.shape: {text_embeddings.shape}")
         return text_embeddings
     
     def compute_video(self, video_data):
-        video_embeddings = self.video_model.extract_feature(video_data.cuda())
+        video_embeddings = self._batch_encode_video(video_data).detach()
+        print(f"After Passing InternViT's extract_features:: video_embeddings.shape: {video_embeddings.shape}")
+        video_embeddings = self.bridge(video_embeddings.cuda())
+        print(f"After Passing Bridge Model:: video_embeddings.shape: {video_embeddings.shape}")
         video_embeddings = self.vid_proj(video_embeddings)
+        print(f"After Passing Projection:: video_embeddings.shape: {video_embeddings.shape}")
         return video_embeddings
 
 
@@ -77,7 +99,7 @@ if __name__ == '__main__':
     import pandas as pd
     from InternVL3 import load_video
     df = pd.read_csv("../../new_testset_with_generated_query.csv")
-    target = df[:5]
+    target = df[:30]
     videos = []
     video_paths = [(f"../../../YT8M/clips/{video['segment_name']}.mp4", video['Full Video Description']) for _, video in target.iterrows()]
     for video_path, caption in video_paths:
@@ -85,7 +107,7 @@ if __name__ == '__main__':
         videos.append({'video': pixel_values.to(torch.bfloat16), 'text': caption})
     
     model = AlignModel(3584, 1024, 256).type(torch.bfloat16).cuda()
-    text_embedding, video_embedding = model(videos[0])
+    text_embedding, video_embedding = model(videos[:30])
     print(f"text_embedding: {text_embedding.shape}")
     print(f"video_embedding: {video_embedding.shape}")
     print(f"sim_matrix: {sim_matrix(text_embedding, video_embedding)}")
